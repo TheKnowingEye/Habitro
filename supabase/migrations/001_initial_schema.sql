@@ -31,7 +31,7 @@ create table profiles (
 
 -- Auto-create a profile row when a user signs up
 create or replace function handle_new_user()
-returns trigger language plpgsql security definer as $$
+returns trigger language plpgsql security definer set search_path = public as $$
 begin
   insert into profiles (id, username)
   values (
