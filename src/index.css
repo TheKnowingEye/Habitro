@@ -93,6 +93,7 @@ button { font-family: inherit; }
   font-size: var(--font-md);
   color: var(--color-text-secondary);
 }
+.page-empty__cta { margin-top: var(--space-lg); }
 
 .form-error {
   color: var(--color-error);
@@ -418,6 +419,58 @@ button { font-family: inherit; }
 .check-item__freq {
   font-size: var(--font-sm);
   color: var(--color-text-secondary);
+}
+
+.check-item__progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.check-item__progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.check-item__progress-label {
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.check-item--done .check-item__progress-label {
+  color: var(--color-success);
+}
+
+.check-item__progress-target {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  opacity: 0.6;
+}
+
+/* Segmented track — one pip per day in the target */
+.check-item__segments {
+  display: flex;
+  gap: 3px;
+  width: 100%;
+}
+
+.check-item__segment {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-border);
+  transition: background 250ms ease;
+}
+
+.check-item__segment--filled {
+  background: var(--color-primary);
+}
+
+.check-item--done .check-item__segment--filled {
+  background: var(--color-success);
 }
 
 /* ── CheckIn page ──────────────────────────────────────────── */
@@ -768,6 +821,20 @@ button { font-family: inherit; }
   align-items: center;
   justify-content: center;
 }
+
+.dashboard__practice-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+.dashboard__practice-icon { font-size: 1.1rem; flex-shrink: 0; }
 
 .dashboard__opponent {
   display: flex;

@@ -30,7 +30,7 @@ export default function BattleResult() {
       const { data: duel } = await supabase
         .from('duels')
         .select(`
-          id, winner_id, week_start, week_end,
+          id, winner_id, week_start, week_end, is_practice,
           user_a_id, user_b_id,
           user_a:profiles!duels_user_a_id_fkey(id, username, rank_tier, wins, losses),
           user_b:profiles!duels_user_b_id_fkey(id, username, rank_tier, wins, losses)
@@ -42,6 +42,8 @@ export default function BattleResult() {
         .maybeSingle();
 
       if (!duel) { setState((s) => ({ ...s, phase: 'no-result' })); return; }
+
+      if (duel.is_practice) { setState((s) => ({ ...s, phase: 'practice-done', duel })); return; }
 
       const myProfile  = duel.user_a_id === user.id ? duel.user_a : duel.user_b;
       const oppProfile = duel.user_a_id === user.id ? duel.user_b : duel.user_a;
@@ -87,6 +89,17 @@ export default function BattleResult() {
           myCheckins, oppCheckins, duel, consolation } = state;
 
   if (phase === 'loading') return <div className="page-loading"><div className="spinner" /></div>;
+
+  if (phase === 'practice-done') {
+    return (
+      <div className="page-empty">
+        <div className="checkin-done-icon" aria-hidden="true">🏆</div>
+        <p className="page-empty__text">You're ready.</p>
+        <p className="page-empty__sub">Practice week complete. Your first real opponent arrives Monday — rank is on the line.</p>
+        <Button onClick={() => navigate('/')} className="page-empty__cta">Back to Dashboard</Button>
+      </div>
+    );
+  }
 
   if (phase === 'no-result') {
     return (
