@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
+import { subscribeToPush } from '../lib/notifications';
 import RankBadge from '../components/rank/RankBadge';
 import TierProgress from '../components/rank/TierProgress';
 
@@ -9,9 +10,14 @@ export default function Profile() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const [profile,  setProfile]  = useState(null);
-  const [history,  setHistory]  = useState([]);
-  const [loading,  setLoading]  = useState(true);
+  const [profile,      setProfile]      = useState(null);
+  const [history,      setHistory]      = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [notifStatus,  setNotifStatus]  = useState(() => {
+    if (!('Notification' in window)) return 'unsupported';
+    return Notification.permission; // 'default' | 'granted' | 'denied'
+  });
+  const [notifLoading, setNotifLoading] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -42,7 +48,14 @@ export default function Profile() {
 
   async function handleSignOut() {
     await supabase.auth.signOut();
-    navigate('/onboarding', { replace: true });
+    navigate('/', { replace: true });
+  }
+
+  async function handleEnableNotifications() {
+    setNotifLoading(true);
+    const sub = await subscribeToPush();
+    setNotifLoading(false);
+    setNotifStatus(sub ? 'granted' : Notification.permission);
   }
 
   if (loading) return <div className="page-loading"><div className="spinner" /></div>;
@@ -111,6 +124,23 @@ export default function Profile() {
             })}
           </ul>
         </section>
+      )}
+
+      {/* ── Notifications ─────────────────────────────────── */}
+      {notifStatus !== 'unsupported' && (
+        <div className="profile-notif">
+          <span className="profile-notif__label">
+            {notifStatus === 'granted' ? '🔔 Notifications enabled' : '🔕 Notifications off'}
+          </span>
+          {notifStatus !== 'granted' && notifStatus !== 'denied' && (
+            <button className="profile-notif__btn" onClick={handleEnableNotifications} disabled={notifLoading}>
+              {notifLoading ? 'Enabling…' : 'Enable'}
+            </button>
+          )}
+          {notifStatus === 'denied' && (
+            <span className="profile-notif__hint">Allow in browser settings</span>
+          )}
+        </div>
       )}
 
       <button className="profile-signout" onClick={handleSignOut}>Sign Out</button>
