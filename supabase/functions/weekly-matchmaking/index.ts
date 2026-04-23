@@ -3,21 +3,16 @@
  * Runs Monday 00:00 UTC via Supabase cron.
  *
  * Algorithm:
- *  1. Find all profiles with no active/pending duel this week.
+ *  1. Find all real-user profiles with no active REAL duel this week.
+ *     (Practice duels do not count — users with only a practice duel join the pool.)
  *  2. Fisher-Yates shuffle the pool.
- *  3. Pair consecutive users; odd user left in pool (no duel this week).
- *  4. Insert duel + initial score rows for each pair.
- *
- * KNOWN GAP (PRD §3.1): the PRD requires matching the odd user "as soon as
- * the next user registers." That is NOT implemented. The skipped user sees
- * "No active duel" all week and waits until next Monday's cron.
- *
- * To close this gap, add a Supabase Database Webhook on profiles INSERT
- * that calls this function. On invocation, re-run the same pool-building
- * logic — the newly registered user will be in the pool, as will any
- * previously skipped user who still has no active/pending duel.
- * The function is already idempotent with respect to already-matched users,
- * so calling it mid-week is safe.
+ *  3. Pair consecutive users.
+ *  4. If the pool is odd, the last user gets a random bot opponent instead of
+ *     sitting out the week.
+ *  5. Insert duel + score rows. Auto-assign 3 random habits to any bot participant
+ *     so bot-checkin can operate from Day 1.
+ *  6. Close open practice duels for all newly matched real users.
+ *  7. Fire new-duel push notifications (bots are skipped).
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
@@ -31,17 +26,18 @@ serve(async (_req) => {
   );
 
   try {
-    const now        = new Date();
-    const weekStart  = getMonday(now);
-    const weekEnd    = getSunday(weekStart);
-    const startStr   = toDateStr(weekStart);
-    const endStr     = toDateStr(weekEnd);
+    const now       = new Date();
+    const weekStart = getMonday(now);
+    const weekEnd   = getSunday(weekStart);
+    const startStr  = toDateStr(weekStart);
+    const endStr    = toDateStr(weekEnd);
 
-    // ── 1. Find users already matched this week ──────────────
+    // ── 1. Real users already matched this week (practice duels excluded) ──
     const { data: existingDuels, error: duelFetchErr } = await supabase
       .from('duels')
       .select('user_a_id, user_b_id')
       .eq('week_start', startStr)
+      .eq('is_practice', false)
       .in('status', ['pending', 'active']);
 
     if (duelFetchErr) throw duelFetchErr;
@@ -49,13 +45,14 @@ serve(async (_req) => {
     const matchedIds = new Set<string>();
     for (const d of existingDuels ?? []) {
       matchedIds.add(d.user_a_id);
-      matchedIds.add(d.user_b_id);
+      if (d.user_b_id) matchedIds.add(d.user_b_id);
     }
 
-    // ── 2. Build the unmatched pool ──────────────────────────
+    // ── 2. Build unmatched pool — real users only, no bots ───────
     const { data: profiles, error: profileErr } = await supabase
       .from('profiles')
-      .select('id');
+      .select('id')
+      .eq('is_bot', false);
 
     if (profileErr) throw profileErr;
 
@@ -69,19 +66,74 @@ serve(async (_req) => {
       [pool[i], pool[j]] = [pool[j], pool[i]];
     }
 
-    // ── 3. Create duels + initial score rows ─────────────────
-    const duelsToInsert  = [];
-    const scoresToInsert = [];
+    // ── 3. Handle odd pool: assign a bot to the last user ────────
+    let botHabitRows: Array<{
+      duel_id: string; user_id: string; habit_id: string; target_frequency: number;
+    }> = [];
+    let botIds = new Set<string>();
+
+    if (pool.length % 2 === 1) {
+      const oddUserId = pool.pop()!;
+
+      const { data: bots } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('is_bot', true);
+
+      if (bots?.length) {
+        const bot    = bots[Math.floor(Math.random() * bots.length)];
+        const duelId = crypto.randomUUID();
+        botIds.add(bot.id);
+
+        // Will be inserted with the rest of the duels
+        pool.push(oddUserId);        // put odd user back — we'll handle it manually below
+        pool.push(bot.id);           // pair with bot at end of pool
+        botIds.add(bot.id);
+
+        // Auto-assign 3 random habits to bot so bot-checkin can run from Monday
+        const { data: habits } = await supabase
+          .from('habits')
+          .select('id, min_frequency');
+
+        if (habits?.length) {
+          const shuffled = [...habits].sort(() => Math.random() - 0.5);
+          for (const h of shuffled.slice(0, 3)) {
+            botHabitRows.push({
+              duel_id:          duelId,
+              user_id:          bot.id,
+              habit_id:         h.id,
+              target_frequency: h.min_frequency,
+            });
+          }
+          // Patch the duel_id into botHabitRows — we know it because we just built it
+          // but the duel is created in the loop below using pool pairs, so we need
+          // to intercept when pool[i] === oddUserId && pool[i+1] === bot.id.
+          // Simplest: store the expected pair and patch after the loop.
+        }
+      } else {
+        // No bots seeded — fall back to leaving user unmatched
+        console.warn(`No bots available; user ${oddUserId} skipped`);
+      }
+    }
+
+    // ── 4. Create duel + score rows ──────────────────────────────
+    const duelsToInsert:  Array<Record<string, unknown>> = [];
+    const scoresToInsert: Array<Record<string, unknown>> = [];
+    // Map from (userA:userB) → duelId so we can patch botHabitRows
+    const pairDuelId = new Map<string, string>();
 
     for (let i = 0; i + 1 < pool.length; i += 2) {
       const duelId = crypto.randomUUID();
+      pairDuelId.set(`${pool[i]}:${pool[i + 1]}`, duelId);
+
       duelsToInsert.push({
-        id:         duelId,
-        user_a_id:  pool[i],
-        user_b_id:  pool[i + 1],
-        week_start: startStr,
-        week_end:   endStr,
-        status:     'active',
+        id:           duelId,
+        user_a_id:    pool[i],
+        user_b_id:    pool[i + 1],
+        week_start:   startStr,
+        week_end:     endStr,
+        status:       'active',
+        is_practice:  false,
       });
       scoresToInsert.push(
         { duel_id: duelId, user_id: pool[i],     total_points: 0, consecutive_days: 0 },
@@ -89,29 +141,67 @@ serve(async (_req) => {
       );
     }
 
-    const errors: string[] = [];
-
-    if (duelsToInsert.length > 0) {
-      const { error: duelErr } = await supabase.from('duels').insert(duelsToInsert);
-      if (duelErr) errors.push(`duel insert: ${duelErr.message}`);
-      else {
-        const { error: scoreErr } = await supabase.from('scores').insert(scoresToInsert);
-        if (scoreErr) errors.push(`score insert: ${scoreErr.message}`);
-        else {
-          // ── Notification 5: new duel alert (Monday AM) ──────
-          // Fire-and-forget — a failed notification must not roll back the duel.
-          // Payload: { mode: "send", userId, title, body, url }
-          await sendNewDuelNotifications(supabase, duelsToInsert);
-        }
+    // Patch correct duel_id into bot habit rows
+    if (botHabitRows.length > 0) {
+      const botId   = botHabitRows[0].user_id;
+      // Find the duel that contains this bot
+      const botDuel = duelsToInsert.find(
+        (d) => d.user_b_id === botId || d.user_a_id === botId
+      );
+      if (botDuel) {
+        botHabitRows = botHabitRows.map((r) => ({ ...r, duel_id: botDuel.id as string }));
       }
     }
 
-    const oddUserId = pool.length % 2 === 1 ? pool[pool.length - 1] : null;
+    const errors: string[] = [];
+    const realUserIds: string[] = []; // newly matched real users (for practice duel cleanup)
+
+    if (duelsToInsert.length > 0) {
+      const { error: duelErr } = await supabase.from('duels').insert(duelsToInsert);
+      if (duelErr) {
+        errors.push(`duel insert: ${duelErr.message}`);
+      } else {
+        const { error: scoreErr } = await supabase.from('scores').insert(scoresToInsert);
+        if (scoreErr) errors.push(`score insert: ${scoreErr.message}`);
+
+        if (botHabitRows.length > 0) {
+          const { error: habitErr } = await supabase.from('duel_habits').insert(botHabitRows);
+          if (habitErr) errors.push(`bot habit insert: ${habitErr.message}`);
+        }
+
+        // Collect real user IDs (exclude bots) for practice duel cleanup
+        for (const d of duelsToInsert) {
+          if (!botIds.has(d.user_a_id as string)) realUserIds.push(d.user_a_id as string);
+          if (d.user_b_id && !botIds.has(d.user_b_id as string)) realUserIds.push(d.user_b_id as string);
+        }
+
+        // ── 5. Close practice duels for all newly matched real users ──
+        if (realUserIds.length > 0) {
+          const { error: practiceErr } = await supabase
+            .from('duels')
+            .update({ status: 'closed' })
+            .eq('is_practice', true)
+            .in('status', ['active', 'pending'])
+            .in('user_a_id', realUserIds);
+          if (practiceErr) errors.push(`practice close: ${practiceErr.message}`);
+        }
+
+        // ── 6. New duel notifications (skip bots) ────────────────
+        const notifyDuels = duelsToInsert.map((d) => ({
+          user_a_id: d.user_a_id as string,
+          user_b_id: d.user_b_id as string,
+        }));
+        await sendNewDuelNotifications(supabase, notifyDuels, botIds);
+      }
+    }
+
+    const botDuelCount = duelsToInsert.filter((d) => botIds.has(d.user_b_id as string)).length;
 
     return json({
-      week:    startStr,
-      matched: duelsToInsert.length * 2,
-      skipped: oddUserId ? 1 : 0,
+      week:      startStr,
+      matched:   (duelsToInsert.length - botDuelCount) * 2,
+      bot_duels: botDuelCount,
+      skipped:   0,
       ...(errors.length ? { errors } : {}),
     }, errors.length ? 207 : 200);
 
@@ -121,17 +211,19 @@ serve(async (_req) => {
   }
 });
 
-// ── Notification helper ───────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────
 
 async function sendNewDuelNotifications(
-  supabase     : ReturnType<typeof createClient>,
-  duels        : Array<{ user_a_id: string; user_b_id: string }>
+  supabase  : ReturnType<typeof createClient>,
+  duels     : Array<{ user_a_id: string; user_b_id: string }>,
+  botIds    : Set<string>
 ) {
-  const pushUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/push-notification`;
+  const pushUrl    = `${Deno.env.get('SUPABASE_URL')}/functions/v1/push-notification`;
   const authHeader = `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`;
 
   for (const duel of duels) {
     for (const userId of [duel.user_a_id, duel.user_b_id]) {
+      if (!userId || botIds.has(userId)) continue; // skip nulls and bots
       try {
         await fetch(pushUrl, {
           method:  'POST',
@@ -145,18 +237,15 @@ async function sendNewDuelNotifications(
           }),
         });
       } catch {
-        // Non-fatal — log only; matchmaking already succeeded
         console.warn(`push-notification failed for user ${userId}`);
       }
     }
   }
 }
 
-// ── Helpers ───────────────────────────────────────────────────
-
 function getMonday(date: Date): Date {
   const d   = new Date(date);
-  const day = d.getUTCDay(); // 0 = Sun … 6 = Sat
+  const day = d.getUTCDay();
   d.setUTCDate(d.getUTCDate() + (day === 0 ? -6 : 1 - day));
   d.setUTCHours(0, 0, 0, 0);
   return d;

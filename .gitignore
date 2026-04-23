@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+
+# Local env — contains real secrets, never commit
+.env.local
+.env.*.local
+
+# Vite / editor
+.vite/
+*.local
+
+# OS
+.DS_Store
+Thumbs.db
+supabase/.temp/

@@ -12,12 +12,15 @@ export default function CheckIn() {
   const navigate = useNavigate();
 
   const [duelId, setDuelId] = useState(null);
+  const [isPractice, setIsPractice] = useState(false);
   // Habits still pending a check-in today: [{ id, habit_id, target_frequency, habits: { name } }]
   const [pending, setPending] = useState([]);
   // Habits already checked in this session (read-only display)
   const [alreadyDone, setAlreadyDone] = useState([]);
   // { [duelHabitId]: boolean } — true = completed, false = not completed
   const [completions, setCompletions] = useState({});
+  // { [habit_id]: number } — completed days this week (excluding today)
+  const [weeklyProgress, setWeeklyProgress] = useState({});
   const [pageState, setPageState] = useState('loading');
   // loading | ready | snapshot-prompt | uploading | submitting | done | no-duel
   const [error, setError] = useState(null);
@@ -31,7 +34,7 @@ export default function CheckIn() {
       // 1. Active duel only — users can't check in on a pending duel
       const { data: duel } = await supabase
         .from('duels')
-        .select('id')
+        .select('id, is_practice')
         .or(`user_a_id.eq.${user.id},user_b_id.eq.${user.id}`)
         .eq('status', 'active')
         .maybeSingle();
@@ -51,7 +54,26 @@ export default function CheckIn() {
         return;
       }
 
-      // 3. Which habits have already been checked in today?
+      // 3. All completed check-ins for this week (to build weekly progress)
+      const weekStart = new Date(today);
+      weekStart.setUTCDate(weekStart.getUTCDate() - ((weekStart.getUTCDay() + 6) % 7));
+      const weekStartStr = weekStart.toISOString().split('T')[0];
+
+      const { data: weekCheckins } = await supabase
+        .from('check_ins')
+        .select('habit_id, checked_date')
+        .eq('duel_id', duel.id)
+        .eq('user_id', user.id)
+        .eq('completed', true)
+        .gte('checked_date', weekStartStr)
+        .lt('checked_date', today); // exclude today — HabitCheckItem adds today live
+
+      const progress = {};
+      for (const ci of weekCheckins ?? []) {
+        progress[ci.habit_id] = (progress[ci.habit_id] ?? 0) + 1;
+      }
+
+      // Which habits have already been checked in today?
       const { data: existing } = await supabase
         .from('check_ins')
         .select('habit_id')
@@ -70,9 +92,11 @@ export default function CheckIn() {
       pendingHabits.forEach((h) => { initCompletions[h.id] = false; });
 
       setDuelId(duel.id);
+      setIsPractice(duel.is_practice ?? false);
       setPending(pendingHabits);
       setAlreadyDone(doneHabits);
       setCompletions(initCompletions);
+      setWeeklyProgress(progress);
       setPageState('ready');
     }
 
@@ -105,6 +129,7 @@ export default function CheckIn() {
       habit_id:      h.habit_id,
       checked_date:  today,
       completed:     completions[h.id] ?? false,
+      solo:          isPractice,
       // Only attach snapshot to completed habits so the opponent sees relevant evidence
       snapshot_url:  completions[h.id] ? snapshotUrl : null,
     }));
@@ -187,12 +212,13 @@ export default function CheckIn() {
         <section className="checkin-already-done" aria-label="Already logged today">
           <p className="checkin-section-label">Already logged</p>
           {alreadyDone.map((h) => (
-            <div key={h.id} className="check-item check-item--locked">
-              <div className="check-item__circle check-item__circle--done" aria-hidden="true">✓</div>
-              <div className="check-item__info">
-                <span className="check-item__name">{h.habits.name}</span>
-              </div>
-            </div>
+            <HabitCheckItem
+              key={h.id}
+              habit={{ name: h.habits.name, target_frequency: h.target_frequency }}
+              completed={true}
+              onChange={() => {}}
+              doneThisWeek={weeklyProgress[h.habit_id] ?? 0}
+            />
           ))}
         </section>
       )}
@@ -204,6 +230,7 @@ export default function CheckIn() {
               habit={{ name: h.habits.name, target_frequency: h.target_frequency }}
               completed={completions[h.id] ?? false}
               onChange={() => toggle(h.id)}
+              doneThisWeek={weeklyProgress[h.habit_id] ?? 0}
             />
           </li>
         ))}

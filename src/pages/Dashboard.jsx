@@ -31,7 +31,7 @@ export default function Dashboard() {
       const { data: duelData } = await supabase
         .from('duels')
         .select(`
-          id, status, week_start, week_end,
+          id, status, week_start, week_end, is_practice,
           user_a_id, user_b_id,
           user_a:profiles!duels_user_a_id_fkey(id, username, rank_tier),
           user_b:profiles!duels_user_b_id_fkey(id, username, rank_tier)
@@ -110,16 +110,26 @@ export default function Dashboard() {
         </Link>
       </header>
 
-      {/* ── Opponent banner ─────────────────────────────────── */}
-      <div className="dashboard__opponent">
-        <span className="dashboard__vs">vs</span>
-        <div className="dashboard__opp-info">
-          <span className="dashboard__opp-name">{opponent?.username ?? '…'}</span>
-          {opponent?.rank_tier && (
-            <Badge variant="default">{opponent.rank_tier}</Badge>
-          )}
+      {/* ── Practice week banner ────────────────────────────── */}
+      {duel.is_practice && (
+        <div className="dashboard__practice-banner" role="note">
+          <span className="dashboard__practice-icon" aria-hidden="true">🏋️</span>
+          <span>Practice week — your first real opponent arrives Monday.</span>
         </div>
-      </div>
+      )}
+
+      {/* ── Opponent banner ─────────────────────────────────── */}
+      {!duel.is_practice && (
+        <div className="dashboard__opponent">
+          <span className="dashboard__vs">vs</span>
+          <div className="dashboard__opp-info">
+            <span className="dashboard__opp-name">{opponent?.username ?? '…'}</span>
+            {opponent?.rank_tier && (
+              <Badge variant="default">{opponent.rank_tier}</Badge>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Live score gap ──────────────────────────────────── */}
       <div className="dashboard__scores">

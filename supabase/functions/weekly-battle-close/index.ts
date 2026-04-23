@@ -51,7 +51,7 @@ serve(async (_req) => {
     // ── 1. Find all active duels whose week has ended ─────────
     const { data: duels, error: duelErr } = await supabase
       .from('duels')
-      .select('id, user_a_id, user_b_id, week_end')
+      .select('id, user_a_id, user_b_id, week_end, is_practice')
       .eq('status', 'active')
       .lt('week_end', today);
 
@@ -59,7 +59,8 @@ serve(async (_req) => {
     if (!duels?.length) return json({ closed: 0, message: 'No duels to close.' });
 
     // Batch-load profiles and scores for all affected users
-    const userIds = duels.flatMap((d) => [d.user_a_id, d.user_b_id]);
+    // Practice duels have user_b_id = null — filter those out of the userIds list
+    const userIds = duels.flatMap((d) => [d.user_a_id, d.user_b_id].filter(Boolean));
 
     const [{ data: profiles }, { data: scores }] = await Promise.all([
       supabase.from('profiles').select('*').in('id', userIds),
@@ -77,6 +78,17 @@ serve(async (_req) => {
 
     for (const duel of duels) {
       try {
+        // ── Practice duels: close silently, no rank/win/loss changes ──
+        if (duel.is_practice) {
+          const { error: closeErr } = await supabase
+            .from('duels')
+            .update({ status: 'closed', winner_id: null })
+            .eq('id', duel.id);
+          if (closeErr) throw closeErr;
+          closed++;
+          continue;
+        }
+
         const scoreA = scoreMap[`${duel.id}:${duel.user_a_id}`];
         const scoreB = scoreMap[`${duel.id}:${duel.user_b_id}`];
         const ptsA   = scoreA?.total_points ?? 0;
