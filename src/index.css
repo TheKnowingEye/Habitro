@@ -1682,3 +1682,187 @@ button { font-family: inherit; }
   color: rgba(255,255,255,0.6);
   white-space: nowrap;
 }
+
+/* ── Landing page ───────────────────────────────────────────── */
+.landing {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-lg) var(--space-md);
+  gap: 40px;
+}
+
+.landing__hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding-top: 48px;
+  gap: var(--space-md);
+}
+
+.landing__logo {
+  font-size: 56px;
+  line-height: 1;
+  filter: drop-shadow(0 0 24px rgba(108, 71, 255, 0.5));
+}
+
+.landing__title {
+  font-size: 2.4rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  background: linear-gradient(135deg, #fff 40%, #a78bfa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.landing__tagline {
+  font-size: var(--font-md);
+  color: var(--color-text-secondary);
+  max-width: 280px;
+  line-height: 1.5;
+}
+
+.landing__cta-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  width: 100%;
+  max-width: 280px;
+  margin-top: var(--space-sm);
+}
+
+.landing__cta-primary {
+  width: 100%;
+  padding: 14px;
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: var(--font-md);
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity var(--transition);
+}
+
+.landing__cta-primary:active { opacity: 0.85; }
+
+.landing__cta-secondary {
+  width: 100%;
+  padding: 14px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--font-md);
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color var(--transition), border-color var(--transition);
+}
+
+.landing__cta-secondary:active {
+  color: var(--color-text);
+  border-color: var(--color-text-secondary);
+}
+
+.landing__features {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.landing__feature {
+  display: flex;
+  gap: var(--space-md);
+  align-items: flex-start;
+}
+
+.landing__feature-icon {
+  font-size: 1.6rem;
+  flex-shrink: 0;
+  width: 40px;
+  text-align: center;
+}
+
+.landing__feature-title {
+  font-size: var(--font-md);
+  font-weight: 700;
+  color: var(--color-text);
+  margin-bottom: 4px;
+}
+
+.landing__feature-desc {
+  font-size: var(--font-sm);
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.landing__footer {
+  font-size: var(--font-sm);
+  color: var(--color-text-secondary);
+  text-align: center;
+  font-style: italic;
+  padding-bottom: var(--space-lg);
+  opacity: 0.7;
+}
+
+/* ── Push notification prompt ───────────────────────────────── */
+.push-prompt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: rgba(108, 71, 255, 0.1);
+  border: 1px solid rgba(108, 71, 255, 0.3);
+  border-radius: var(--radius-md);
+  font-size: var(--font-sm);
+}
+
+.push-prompt__text {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--color-text-secondary);
+  flex: 1;
+  min-width: 0;
+}
+
+.push-prompt__icon { font-size: 1rem; flex-shrink: 0; }
+
+.push-prompt__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-shrink: 0;
+}
+
+.push-prompt__enable {
+  padding: 4px 12px;
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.push-prompt__enable:disabled { opacity: 0.6; }
+
+.push-prompt__dismiss {
+  background: none;
+  border: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 4px;
+  -webkit-tap-highlight-color: transparent;
+}
