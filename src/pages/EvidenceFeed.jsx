@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
+import NotificationBell from '../components/ui/NotificationBell';
 
 function formatDayHeader(dateStr) {
   const date = new Date(dateStr + 'T12:00:00');
@@ -155,6 +156,7 @@ export default function EvidenceFeed() {
       <header className="evidence-page__header">
         <button className="evidence-page__back" onClick={() => navigate('/')} aria-label="Back">←</button>
         <h1 className="evidence-page__title">Evidence Feed</h1>
+        <NotificationBell />
       </header>
 
       {days.length === 0 ? (
