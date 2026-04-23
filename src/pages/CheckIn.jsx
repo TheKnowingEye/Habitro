@@ -6,6 +6,7 @@ import { shouldPromptSnapshot } from '../lib/scoring';
 import HabitCheckItem from '../components/checkin/HabitCheckItem';
 import SnapshotPrompt from '../components/checkin/SnapshotPrompt';
 import Button from '../components/ui/Button';
+import NotificationBell from '../components/ui/NotificationBell';
 
 export default function CheckIn() {
   const { user } = useAuth();
@@ -228,7 +229,10 @@ export default function CheckIn() {
   return (
     <div className="checkin-page">
       <header className="checkin-page__header">
-        <h1 className="checkin-page__title">Today's Check-in</h1>
+        <div className="checkin-page__header-top">
+          <h1 className="checkin-page__title">Today's Check-in</h1>
+          <NotificationBell />
+        </div>
         <p className="checkin-page__date">
           {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
         </p>

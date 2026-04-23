@@ -218,29 +218,20 @@ async function sendNewDuelNotifications(
   duels     : Array<{ user_a_id: string; user_b_id: string }>,
   botIds    : Set<string>
 ) {
-  const pushUrl    = `${Deno.env.get('SUPABASE_URL')}/functions/v1/push-notification`;
-  const authHeader = `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`;
+  const userIds = duels
+    .flatMap((d) => [d.user_a_id, d.user_b_id])
+    .filter((id) => id && !botIds.has(id));
 
-  for (const duel of duels) {
-    for (const userId of [duel.user_a_id, duel.user_b_id]) {
-      if (!userId || botIds.has(userId)) continue; // skip nulls and bots
-      try {
-        await fetch(pushUrl, {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: authHeader },
-          body:    JSON.stringify({
-            mode:  'send',
-            userId,
-            title: 'HabitDuel',
-            body:  'Your new opponent is ready. Week starts now.',
-            url:   '/',
-          }),
-        });
-      } catch {
-        console.warn(`push-notification failed for user ${userId}`);
-      }
-    }
-  }
+  if (!userIds.length) return;
+
+  const rows = [...new Set(userIds)].map((userId) => ({
+    user_id: userId,
+    type:    'new_duel',
+    message: 'Your new opponent is ready. Week starts now.',
+  }));
+
+  const { error } = await supabase.from('notifications').insert(rows);
+  if (error) console.warn('Failed to insert new-duel notifications:', error.message);
 }
 
 function getMonday(date: Date): Date {
