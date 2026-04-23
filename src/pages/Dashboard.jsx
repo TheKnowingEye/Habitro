@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase';
 import ScoreGap from '../components/scoring/ScoreGap';
 import Button from '../components/ui/Button';
 import Badge from '../components/ui/Badge';
+import PushPrompt from '../components/ui/PushPrompt';
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -131,6 +132,9 @@ export default function Dashboard() {
           <div className="dashboard__avatar">{user?.email?.[0]?.toUpperCase() ?? '?'}</div>
         </Link>
       </header>
+
+      {/* ── Push notification prompt ───────────────────────── */}
+      <PushPrompt />
 
       {/* ── Practice week banner ────────────────────────────── */}
       {duel.is_practice && (
