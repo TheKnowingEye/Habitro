@@ -1,58 +1,55 @@
-// habit: DB row from `habits` table (snake_case fields)
-export default function HabitCard({ habit, selected, frequency, disabled, onToggle, onFrequencyChange }) {
-  const isFixed = habit.min_frequency === habit.max_frequency;
+export default function HabitCard({ habit, icon, minFreq, maxFreq, selected, frequency, disabled, onToggle, onFrequencyChange }) {
+  const isFixed = minFreq === maxFreq;
 
   function handleStepperClick(e, newFreq) {
-    e.stopPropagation(); // don't bubble to card toggle
+    e.stopPropagation();
     onFrequencyChange(newFreq);
   }
 
   return (
     <div
-      className={[
-        'habit-card',
-        selected  ? 'habit-card--selected'  : '',
-        disabled  ? 'habit-card--disabled'  : '',
-      ].join(' ')}
-      onClick={onToggle}
+      className={['habit-card', selected ? 'habit-card--selected' : '', disabled ? 'habit-card--disabled' : ''].filter(Boolean).join(' ')}
+      onClick={!disabled ? onToggle : undefined}
       role="checkbox"
       aria-checked={selected}
       tabIndex={disabled ? -1 : 0}
-      onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); onToggle(); } }}
+      onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); if (!disabled) onToggle(); } }}
     >
+      {selected && <div className="habit-card__badge" aria-hidden="true">✓</div>}
+
       <div className="habit-card__header">
-        <div className="habit-card__check" aria-hidden="true">✓</div>
+        <span className="habit-card__emoji" aria-hidden="true">{icon}</span>
         <div className="habit-card__info">
           <span className="habit-card__name">{habit.name}</span>
           <span className="habit-card__meta">
-            {isFixed
-              ? `${habit.min_frequency}×/week`
-              : `${habit.min_frequency}–${habit.max_frequency}×/week`}
+            {isFixed ? `${minFreq} days/week` : `${minFreq}–${maxFreq} days/week`}
           </span>
         </div>
       </div>
 
       {selected && (
         <div className="habit-card__frequency" role="group" aria-label="Target frequency">
-          <span className="habit-card__freq-label">Target</span>
           {isFixed ? (
-            <span className="habit-card__freq-fixed">{frequency}×/week (fixed)</span>
+            <div className="habit-card__freq-fixed">
+              <span className="habit-card__lock" aria-hidden="true">🔒</span>
+              <span>{frequency} times this week</span>
+            </div>
           ) : (
             <div className="habit-card__stepper">
               <button
                 className="stepper-btn"
                 aria-label="Decrease frequency"
-                onClick={(e) => handleStepperClick(e, Math.max(habit.min_frequency, frequency - 1))}
-                disabled={frequency <= habit.min_frequency}
+                onClick={(e) => handleStepperClick(e, Math.max(minFreq, frequency - 1))}
+                disabled={frequency <= minFreq}
               >
                 −
               </button>
-              <span className="stepper-value" aria-live="polite">{frequency}×/week</span>
+              <span className="stepper-value" aria-live="polite">{frequency} times this week</span>
               <button
                 className="stepper-btn"
                 aria-label="Increase frequency"
-                onClick={(e) => handleStepperClick(e, Math.min(habit.max_frequency, frequency + 1))}
-                disabled={frequency >= habit.max_frequency}
+                onClick={(e) => handleStepperClick(e, Math.min(maxFreq, frequency + 1))}
+                disabled={frequency >= maxFreq}
               >
                 +
               </button>
