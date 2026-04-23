@@ -1027,33 +1027,27 @@ button { font-family: inherit; }
   font-weight: 700;
 }
 
-.dashboard__done-today {
+.dashboard__checkin {
   display: flex;
-  align-items: center;
-  gap: var(--space-md);
-  padding: var(--space-md);
-  background: var(--color-success-dim);
-  border: 1.5px solid var(--color-success);
-  border-radius: var(--radius-md);
+  flex-direction: column;
+  gap: var(--space-sm);
 }
 
-.dashboard__done-icon {
-  font-size: 22px;
-  color: var(--color-success);
-  font-weight: 800;
-  flex-shrink: 0;
-}
-
-.dashboard__done-title {
-  font-size: var(--font-md);
-  font-weight: 600;
-  color: var(--color-success);
-}
-
-.dashboard__done-sub {
+.dashboard__checkin-hint {
   font-size: var(--font-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-sm);
+}
+
+.dashboard__checkin-hint--done {
+  color: var(--color-success);
+  background: var(--color-success-dim);
+}
+
+.dashboard__checkin-hint--partial {
   color: var(--color-text-secondary);
-  margin-top: 2px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
 }
 
 .dashboard__nav {

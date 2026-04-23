@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
@@ -13,17 +13,20 @@ export default function CheckIn() {
 
   const [duelId, setDuelId] = useState(null);
   const [isPractice, setIsPractice] = useState(false);
-  // Habits still pending a check-in today: [{ id, habit_id, target_frequency, habits: { name } }]
-  const [pending, setPending] = useState([]);
-  // Habits already checked in this session (read-only display)
-  const [alreadyDone, setAlreadyDone] = useState([]);
-  // { [duelHabitId]: boolean } — true = completed, false = not completed
-  const [completions, setCompletions] = useState({});
-  // { [habit_id]: number } — completed days this week (excluding today)
+  const [duelHabits, setDuelHabits] = useState([]);
+  // Live DB state: { [habit_id]: { completed: boolean, snapshot_url: string|null } }
+  const [checkins, setCheckins] = useState({});
+  // Days completed before today: { [habit_id]: number }
   const [weeklyProgress, setWeeklyProgress] = useState({});
-  const [pageState, setPageState] = useState('loading');
-  // loading | ready | snapshot-prompt | uploading | submitting | done | no-duel
+  const [pageState, setPageState] = useState('loading'); // loading | ready | no-duel
+  const [hasSnapshotToday, setHasSnapshotToday] = useState(false);
+  // Habit waiting on snapshot decision (toggled to complete, upsert deferred)
+  const [pendingSnapshotHabit, setPendingSnapshotHabit] = useState(null);
   const [error, setError] = useState(null);
+  const [showExitToast, setShowExitToast] = useState(false);
+
+  // Prevent a rapid double-tap from firing two concurrent upserts for the same habit
+  const savingRef = useRef(new Set());
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -31,7 +34,6 @@ export default function CheckIn() {
     if (!user) return;
 
     async function load() {
-      // 1. Active duel only — users can't check in on a pending duel
       const { data: duel } = await supabase
         .from('duels')
         .select('id, is_practice')
@@ -41,138 +43,172 @@ export default function CheckIn() {
 
       if (!duel) { setPageState('no-duel'); return; }
 
-      // 2. User's habit selections for this duel
-      const { data: duelHabits } = await supabase
+      const { data: duelHabitData } = await supabase
         .from('duel_habits')
         .select('id, habit_id, target_frequency, habits(name)')
         .eq('duel_id', duel.id)
         .eq('user_id', user.id);
 
-      if (!duelHabits?.length) {
-        // No habits selected yet — redirect to selection
+      if (!duelHabitData?.length) {
         navigate('/habits', { replace: true });
         return;
       }
 
-      // 3. All completed check-ins for this week (to build weekly progress)
-      const weekStart = new Date(today);
+      // Weekly progress — completed days before today (for progress bar)
+      const weekStart = new Date(today + 'T00:00:00');
       weekStart.setUTCDate(weekStart.getUTCDate() - ((weekStart.getUTCDay() + 6) % 7));
       const weekStartStr = weekStart.toISOString().split('T')[0];
 
-      const { data: weekCheckins } = await supabase
-        .from('check_ins')
-        .select('habit_id, checked_date')
-        .eq('duel_id', duel.id)
-        .eq('user_id', user.id)
-        .eq('completed', true)
-        .gte('checked_date', weekStartStr)
-        .lt('checked_date', today); // exclude today — HabitCheckItem adds today live
+      const [{ data: weekCheckins }, { data: todayCheckins }] = await Promise.all([
+        supabase
+          .from('check_ins')
+          .select('habit_id')
+          .eq('duel_id', duel.id)
+          .eq('user_id', user.id)
+          .eq('completed', true)
+          .gte('checked_date', weekStartStr)
+          .lt('checked_date', today),
+        supabase
+          .from('check_ins')
+          .select('habit_id, completed, snapshot_url')
+          .eq('duel_id', duel.id)
+          .eq('user_id', user.id)
+          .eq('checked_date', today),
+      ]);
 
       const progress = {};
       for (const ci of weekCheckins ?? []) {
         progress[ci.habit_id] = (progress[ci.habit_id] ?? 0) + 1;
       }
 
-      // Which habits have already been checked in today?
-      const { data: existing } = await supabase
-        .from('check_ins')
-        .select('habit_id')
-        .eq('duel_id', duel.id)
-        .eq('user_id', user.id)
-        .eq('checked_date', today);
-
-      const doneHabitIds = new Set((existing ?? []).map((c) => c.habit_id));
-
-      const pendingHabits = duelHabits.filter((h) => !doneHabitIds.has(h.habit_id));
-      const doneHabits    = duelHabits.filter((h) =>  doneHabitIds.has(h.habit_id));
-
-      if (pendingHabits.length === 0) { setPageState('done'); return; }
-
-      const initCompletions = {};
-      pendingHabits.forEach((h) => { initCompletions[h.id] = false; });
+      const checkinsMap = {};
+      let snapshotExists = false;
+      for (const ci of todayCheckins ?? []) {
+        checkinsMap[ci.habit_id] = { completed: ci.completed, snapshot_url: ci.snapshot_url };
+        if (ci.snapshot_url) snapshotExists = true;
+      }
 
       setDuelId(duel.id);
       setIsPractice(duel.is_practice ?? false);
-      setPending(pendingHabits);
-      setAlreadyDone(doneHabits);
-      setCompletions(initCompletions);
+      setDuelHabits(duelHabitData);
+      setCheckins(checkinsMap);
       setWeeklyProgress(progress);
+      setHasSnapshotToday(snapshotExists);
       setPageState('ready');
     }
 
     load();
   }, [user, navigate, today]);
 
-  function toggle(duelHabitId) {
-    setCompletions((prev) => ({ ...prev, [duelHabitId]: !prev[duelHabitId] }));
-  }
-
-  function handleSubmitIntent() {
-    const completedHabits = pending.filter((h) => completions[h.id]);
-    // Snapshot prompt: check the habit with the highest target frequency among completed ones
-    const maxFreq = completedHabits.reduce((max, h) => Math.max(max, h.target_frequency), 0);
-
-    if (completedHabits.length > 0 && shouldPromptSnapshot(maxFreq)) {
-      setPageState('snapshot-prompt');
-    } else {
-      doSubmit(null);
-    }
-  }
-
-  async function doSubmit(snapshotUrl) {
-    setPageState('submitting');
-    setError(null);
-
-    const rows = pending.map((h) => ({
-      duel_id:       duelId,
-      user_id:       user.id,
-      habit_id:      h.habit_id,
-      checked_date:  today,
-      completed:     completions[h.id] ?? false,
-      solo:          isPractice,
-      // Only attach snapshot to completed habits so the opponent sees relevant evidence
-      snapshot_url:  completions[h.id] ? snapshotUrl : null,
-    }));
-
-    const { error: err } = await supabase.from('check_ins').insert(rows);
+  // Low-level upsert — does NOT update local state (caller handles that)
+  async function doUpsert(habit, completed, snapshotUrl = null) {
+    const { error: err } = await supabase
+      .from('check_ins')
+      .upsert(
+        {
+          duel_id:      duelId,
+          user_id:      user.id,
+          habit_id:     habit.habit_id,
+          checked_date: today,
+          completed,
+          solo:         isPractice,
+          snapshot_url: snapshotUrl,
+        },
+        { onConflict: 'duel_id,user_id,habit_id,checked_date' }
+      );
 
     if (err) {
-      setError(err.message);
-      setPageState('ready');
-      return;
+      setError('Failed to save — tap the habit again to retry.');
+      return false;
     }
-
-    setPageState('done');
+    if (snapshotUrl) setHasSnapshotToday(true);
+    return true;
   }
 
-  async function handleSnapshotUpload(file) {
-    if (!file) { doSubmit(null); return; }
+  async function handleToggle(habit) {
+    if (savingRef.current.has(habit.habit_id)) return;
 
-    setPageState('uploading');
+    const current = checkins[habit.habit_id]?.completed ?? false;
+    const next    = !current;
+    setError(null);
 
-    const ext  = file.name.split('.').pop() || 'jpg';
-    const path = `${user.id}/${duelId}/${today}.${ext}`;
+    // Optimistic UI update — reverted below if the upsert fails
+    setCheckins((prev) => ({
+      ...prev,
+      [habit.habit_id]: {
+        completed:    next,
+        snapshot_url: next ? (prev[habit.habit_id]?.snapshot_url ?? null) : null,
+      },
+    }));
 
-    const { error: uploadErr } = await supabase.storage
-      .from('snapshots')
-      .upload(path, file, { upsert: true });
-
-    if (uploadErr) {
-      // Non-fatal: submit without the snapshot rather than blocking the check-in
-      setError('Photo upload failed — check-in saved without snapshot.');
-      doSubmit(null);
-      return;
+    // Toggling TO complete: maybe show snapshot prompt before upserting.
+    // Only prompt if no snapshot exists today yet (never prompt twice).
+    if (next && !hasSnapshotToday && shouldPromptSnapshot(habit.target_frequency)) {
+      setPendingSnapshotHabit(habit);
+      return; // upsert is deferred until handleSnapshotDecision
     }
 
-    const { data: { publicUrl } } = supabase.storage
-      .from('snapshots')
-      .getPublicUrl(path);
+    savingRef.current.add(habit.habit_id);
+    const ok = await doUpsert(habit, next);
+    savingRef.current.delete(habit.habit_id);
 
-    doSubmit(publicUrl);
+    if (!ok) {
+      // Revert optimistic update on failure
+      setCheckins((prev) => ({
+        ...prev,
+        [habit.habit_id]: { completed: current, snapshot_url: prev[habit.habit_id]?.snapshot_url ?? null },
+      }));
+    }
   }
 
-  const completedCount = Object.values(completions).filter(Boolean).length;
-  const isSubmitting   = pageState === 'submitting' || pageState === 'uploading';
+  // Called by SnapshotPrompt: file = File object, or null if user skipped
+  async function handleSnapshotDecision(file) {
+    const habit = pendingSnapshotHabit;
+    setPendingSnapshotHabit(null);
+
+    let snapshotUrl = null;
+
+    if (file) {
+      const ext  = file.name.split('.').pop() || 'jpg';
+      const path = `${user.id}/${duelId}/${today}-${habit.habit_id.slice(0, 8)}.${ext}`;
+
+      const { error: uploadErr } = await supabase.storage
+        .from('snapshots')
+        .upload(path, file, { upsert: true });
+
+      if (!uploadErr) {
+        const { data: { publicUrl } } = supabase.storage.from('snapshots').getPublicUrl(path);
+        snapshotUrl = publicUrl;
+      } else {
+        setError('Photo upload failed — check-in saved without snapshot.');
+      }
+    }
+
+    savingRef.current.add(habit.habit_id);
+    const ok = await doUpsert(habit, true, snapshotUrl);
+    savingRef.current.delete(habit.habit_id);
+
+    if (!ok) {
+      // Revert the optimistic check if save failed
+      setCheckins((prev) => ({
+        ...prev,
+        [habit.habit_id]: { completed: false, snapshot_url: null },
+      }));
+    } else {
+      // Confirm snapshot_url in local state
+      setCheckins((prev) => ({
+        ...prev,
+        [habit.habit_id]: { completed: true, snapshot_url: snapshotUrl },
+      }));
+    }
+  }
+
+  function handleDone() {
+    setShowExitToast(true);
+    setTimeout(() => navigate('/'), 900);
+  }
+
+  const completedCount = duelHabits.filter((h) => checkins[h.habit_id]?.completed).length;
 
   // ── Render states ─────────────────────────────────────────
 
@@ -189,16 +225,6 @@ export default function CheckIn() {
     );
   }
 
-  if (pageState === 'done') {
-    return (
-      <div className="page-empty">
-        <div className="checkin-done-icon" aria-hidden="true">✓</div>
-        <p className="page-empty__text">All done for today.</p>
-        <p className="page-empty__sub">Come back tomorrow to keep the streak alive.</p>
-      </div>
-    );
-  }
-
   return (
     <div className="checkin-page">
       <header className="checkin-page__header">
@@ -206,30 +232,16 @@ export default function CheckIn() {
         <p className="checkin-page__date">
           {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
         </p>
+        <p className="checkin-page__autosave">Saves automatically</p>
       </header>
 
-      {alreadyDone.length > 0 && (
-        <section className="checkin-already-done" aria-label="Already logged today">
-          <p className="checkin-section-label">Already logged</p>
-          {alreadyDone.map((h) => (
-            <HabitCheckItem
-              key={h.id}
-              habit={{ name: h.habits.name, target_frequency: h.target_frequency }}
-              completed={true}
-              onChange={() => {}}
-              doneThisWeek={weeklyProgress[h.habit_id] ?? 0}
-            />
-          ))}
-        </section>
-      )}
-
       <ul className="checkin-page__list" role="group" aria-label="Habits to check in">
-        {pending.map((h) => (
+        {duelHabits.map((h) => (
           <li key={h.id}>
             <HabitCheckItem
               habit={{ name: h.habits.name, target_frequency: h.target_frequency }}
-              completed={completions[h.id] ?? false}
-              onChange={() => toggle(h.id)}
+              completed={checkins[h.habit_id]?.completed ?? false}
+              onChange={() => handleToggle(h)}
               doneThisWeek={weeklyProgress[h.habit_id] ?? 0}
             />
           </li>
@@ -240,17 +252,21 @@ export default function CheckIn() {
 
       <footer className="checkin-page__footer">
         <p className="checkin-page__tally">
-          {completedCount} of {pending.length} marked complete
+          {completedCount} of {duelHabits.length} done today
         </p>
-        <Button onClick={handleSubmitIntent} disabled={isSubmitting} loading={isSubmitting}>
-          {isSubmitting ? 'Submitting…' : 'Submit Check-in'}
-        </Button>
+        <Button onClick={handleDone}>Done</Button>
       </footer>
 
-      {pageState === 'snapshot-prompt' && (
+      {showExitToast && (
+        <div className="toast" role="status" aria-live="polite">
+          Progress saved
+        </div>
+      )}
+
+      {pendingSnapshotHabit && (
         <SnapshotPrompt
-          onSubmit={handleSnapshotUpload}
-          onSkip={() => doSubmit(null)}
+          onSubmit={handleSnapshotDecision}
+          onSkip={() => handleSnapshotDecision(null)}
         />
       )}
     </div>

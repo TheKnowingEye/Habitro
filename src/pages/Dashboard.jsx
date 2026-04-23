@@ -13,7 +13,11 @@ export default function Dashboard() {
 
   const [duel, setDuel] = useState(null);
   const [opponent, setOpponent] = useState(null);
-  const [checkedInToday, setCheckedInToday] = useState(false);
+  // 'none' | 'partial' | 'all'
+  const [checkinStatus, setCheckinStatus] = useState('none');
+  const [pendingHabitNames, setPendingHabitNames] = useState([]);
+  const [totalHabits, setTotalHabits] = useState(0);
+  const [completedToday, setCompletedToday] = useState(0);
   const [pageState, setPageState] = useState('loading');
 
   const today = new Date().toISOString().split('T')[0];
@@ -58,18 +62,36 @@ export default function Dashboard() {
       // Resolve which profile is the opponent
       const opp = duelData.user_a_id === user.id ? duelData.user_b : duelData.user_a;
 
-      // Has the user already checked in today?
-      const { data: ci } = await supabase
-        .from('check_ins')
-        .select('id')
-        .eq('duel_id', duelData.id)
-        .eq('user_id', user.id)
-        .eq('checked_date', today)
-        .limit(1);
+      // Fetch all habits for this duel + today's completed check-ins in parallel
+      const [{ data: duelHabits }, { data: todayCheckins }] = await Promise.all([
+        supabase
+          .from('duel_habits')
+          .select('habit_id, habits(name)')
+          .eq('duel_id', duelData.id)
+          .eq('user_id', user.id),
+        supabase
+          .from('check_ins')
+          .select('habit_id, completed')
+          .eq('duel_id', duelData.id)
+          .eq('user_id', user.id)
+          .eq('checked_date', today),
+      ]);
+
+      const total       = duelHabits?.length ?? 0;
+      const doneIds     = new Set((todayCheckins ?? []).filter((c) => c.completed).map((c) => c.habit_id));
+      const doneCount   = doneIds.size;
+      const pendingNames = (duelHabits ?? [])
+        .filter((h) => !doneIds.has(h.habit_id))
+        .map((h) => h.habits.name);
+
+      const status = doneCount === 0 ? 'none' : doneCount >= total ? 'all' : 'partial';
 
       setDuel(duelData);
       setOpponent(opp);
-      setCheckedInToday((ci?.length ?? 0) > 0);
+      setCheckinStatus(status);
+      setPendingHabitNames(pendingNames);
+      setTotalHabits(total);
+      setCompletedToday(doneCount);
       setPageState('ready');
     }
 
@@ -143,19 +165,22 @@ export default function Dashboard() {
 
       {/* ── Check-in CTA ────────────────────────────────────── */}
       <div className="dashboard__checkin">
-        {checkedInToday ? (
-          <div className="dashboard__done-today">
-            <span className="dashboard__done-icon" aria-hidden="true">✓</span>
-            <div>
-              <p className="dashboard__done-title">Checked in today</p>
-              <p className="dashboard__done-sub">Come back tomorrow to keep the streak.</p>
-            </div>
-          </div>
-        ) : (
-          <Button onClick={() => navigate('/checkin')}>
-            Check In Today
-          </Button>
+        {checkinStatus === 'all' && (
+          <p className="dashboard__checkin-hint dashboard__checkin-hint--done">
+            <span aria-hidden="true">✓</span> All {totalHabits} habit{totalHabits !== 1 ? 's' : ''} done today
+          </p>
         )}
+        {checkinStatus === 'partial' && (
+          <p className="dashboard__checkin-hint dashboard__checkin-hint--partial">
+            {completedToday} of {totalHabits} done
+            {pendingHabitNames.length > 0 && (
+              <> · Still to go: <strong>{pendingHabitNames.join(', ')}</strong></>
+            )}
+          </p>
+        )}
+        <Button onClick={() => navigate('/checkin')}>
+          {checkinStatus === 'none' ? 'Check in today' : "Update today's check-ins"}
+        </Button>
       </div>
 
       {/* ── Quick links ─────────────────────────────────────── */}
