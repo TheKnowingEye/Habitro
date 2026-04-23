@@ -1477,6 +1477,38 @@ button { font-family: inherit; }
 .history-item__opp  { font-size: var(--font-md); font-weight: 500; flex: 1; }
 .history-item__date { font-size: var(--font-sm); color: var(--color-text-secondary); }
 
+.profile-notif {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-md);
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--font-sm);
+}
+
+.profile-notif__label { color: var(--color-text-secondary); }
+
+.profile-notif__btn {
+  padding: 4px 12px;
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.profile-notif__btn:disabled { opacity: 0.6; }
+
+.profile-notif__hint {
+  font-size: var(--font-sm);
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
 .profile-signout {
   margin-top: auto;
   background: none;
