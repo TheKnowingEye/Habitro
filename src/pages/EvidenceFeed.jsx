@@ -37,7 +37,7 @@ function Tile({ s, isMe, opponentName, onOpen }) {
 
   return (
     <button
-      className="evidence-tile"
+      className={`evidence-tile evidence-tile--${isMe ? 'me' : 'them'}`}
       onClick={onOpen}
       aria-label={`${label} — ${habitStr} at ${timeStr}`}
     >
