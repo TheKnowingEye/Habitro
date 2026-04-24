@@ -26,13 +26,17 @@ create policy "Users update own notifications"
   on notifications for update
   using (auth.uid() = user_id);
 
--- ── DB trigger: notify opponent when a check-in is completed ─
+-- ── DB trigger: notify opponent when ALL habits are completed ─
+-- Fires only once per day per duel; survives un-check/re-check.
 create or replace function notify_opponent_on_checkin()
 returns trigger language plpgsql security definer as $$
 declare
-  v_opponent_id uuid;
+  v_opponent_id      uuid;
+  v_total_habits     int;
+  v_completed_habits int;
+  v_already_notified boolean;
 begin
-  -- For updates, only fire when completed flips from false → true
+  -- Skip if this is an update where completed was already true
   if TG_OP = 'UPDATE' and old.completed = true then
     return new;
   end if;
@@ -41,22 +45,46 @@ begin
     return new;
   end if;
 
+  -- Only notify when every habit for the day is done
+  select count(*) into v_total_habits
+  from duel_habits
+  where duel_id = new.duel_id and user_id = new.user_id;
+
+  select count(*) into v_completed_habits
+  from check_ins
+  where duel_id = new.duel_id
+    and user_id = new.user_id
+    and checked_date = new.checked_date
+    and completed = true;
+
+  if v_completed_habits < v_total_habits then
+    return new;
+  end if;
+
+  -- Find opponent
   select case
     when user_a_id = new.user_id then user_b_id
     else user_a_id
   end into v_opponent_id
-  from duels
-  where id = new.duel_id;
+  from duels where id = new.duel_id;
 
-  if v_opponent_id is null then
-    return new;
-  end if;
+  if v_opponent_id is null then return new; end if;
+
+  -- Already notified today? Skip even if user un-checks and re-checks
+  select exists(
+    select 1 from notifications
+    where user_id = v_opponent_id
+      and type = 'opponent_checkin'
+      and created_at::date = new.checked_date
+  ) into v_already_notified;
+
+  if v_already_notified then return new; end if;
 
   insert into notifications (user_id, type, message)
   values (
     v_opponent_id,
     'opponent_checkin',
-    'Your opponent just checked in. Check the score.'
+    'Your opponent completed all their habits today. Check the score.'
   );
 
   return new;
