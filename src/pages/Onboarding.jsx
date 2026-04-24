@@ -7,20 +7,38 @@ export default function Onboarding() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [mode, setMode] = useState(searchParams.get('mode') === 'signup' ? 'signup' : 'signin');
-  const [email, setEmail]     = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError]     = useState('');
-  const [info, setInfo]       = useState('');
-  const [loading, setLoading] = useState(false);
+  const [email, setEmail]       = useState('');
+  const [password, setPassword]   = useState('');
+  const [username, setUsername]   = useState('');
+  const [error, setError]         = useState('');
+  const [info, setInfo]           = useState('');
+  const [loading, setLoading]     = useState(false);
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
     setInfo('');
+
+    if (mode === 'signup') {
+      const trimmed = username.trim();
+      if (trimmed.length < 3) {
+        setError('Username must be at least 3 characters.');
+        return;
+      }
+      if (!/^[a-zA-Z0-9_]+$/.test(trimmed)) {
+        setError('Username can only contain letters, numbers, and underscores.');
+        return;
+      }
+    }
+
     setLoading(true);
 
     if (mode === 'signup') {
-      const { error: err } = await supabase.auth.signUp({ email, password });
+      const { error: err } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { username: username.trim() } },
+      });
       if (err) {
         setError(err.message);
       } else {
@@ -62,6 +80,25 @@ export default function Onboarding() {
         </div>
 
         <form onSubmit={handleSubmit} style={styles.form}>
+          {mode === 'signup' && (
+            <>
+              <label style={styles.label}>Username</label>
+              <input
+                type="text"
+                required
+                minLength={3}
+                maxLength={30}
+                value={username}
+                onChange={e => setUsername(e.target.value)}
+                style={styles.input}
+                placeholder="your_handle"
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
+              />
+            </>
+          )}
+
           <label style={styles.label}>Email</label>
           <input
             type="email"
