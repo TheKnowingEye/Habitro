@@ -1,5 +1,21 @@
+import { Component } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(err) { return { error: err }; }
+  render() {
+    if (this.state.error) return (
+      <div style={{ padding: 24, background: '#fff', color: '#c00', fontFamily: 'monospace', whiteSpace: 'pre-wrap', fontSize: 13 }}>
+        <b>Render error — check console for full stack</b>{'\n\n'}
+        {this.state.error.message}{'\n\n'}
+        {this.state.error.stack}
+      </div>
+    );
+    return this.props.children;
+  }
+}
 import Landing from './pages/Landing';
 import Onboarding from './pages/Onboarding';
 import HabitSelection from './pages/HabitSelection';
@@ -41,7 +57,9 @@ export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <AppRoutes />
+        <ErrorBoundary>
+          <AppRoutes />
+        </ErrorBoundary>
       </BrowserRouter>
     </AuthProvider>
   );
