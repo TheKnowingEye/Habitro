@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useScore } from '../hooks/useScore';
 import { supabase } from '../lib/supabase';
 import ScoreGap from '../components/scoring/ScoreGap';
+import CalendarStrip from '../components/scoring/CalendarStrip';
 import Button from '../components/ui/Button';
 import Badge from '../components/ui/Badge';
 import NotificationBell from '../components/ui/NotificationBell';
@@ -157,6 +158,13 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* ── Calendar strip ──────────────────────────────────── */}
+      <CalendarStrip
+        weekStart={duel.week_start}
+        duelId={duel.id}
+        userId={user.id}
+      />
+
       {/* ── Live score gap ──────────────────────────────────── */}
       <div className="dashboard__scores">
         <ScoreGap
@@ -187,11 +195,11 @@ export default function Dashboard() {
         </Button>
       </div>
 
-      {/* ── Quick links ─────────────────────────────────────── */}
-      <nav className="dashboard__nav">
-        <Link to="/evidence" className="dashboard__nav-link">Evidence Feed</Link>
-        <Link to="/profile"  className="dashboard__nav-link">My Profile</Link>
-      </nav>
+      {/* ── Gallery FAB ─────────────────────────────────────── */}
+      <Link to="/gallery" className="dashboard__gallery-fab" aria-label="Check-in Gallery">
+        <span className="dashboard__gallery-fab__icon">📷</span>
+        <span className="dashboard__gallery-fab__label">Gallery</span>
+      </Link>
     </div>
   );
 }

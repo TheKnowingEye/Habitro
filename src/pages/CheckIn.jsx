@@ -17,6 +17,10 @@ export default function CheckIn() {
   const [duelHabits, setDuelHabits] = useState([]);
   // Live DB state: { [habit_id]: { completed: boolean, snapshot_url: string|null } }
   const [checkins, setCheckins] = useState({});
+  // Saved notes: { [habit_id]: string }
+  const [notes, setNotes] = useState({});
+  // Which habit has the note input open
+  const [expandedNote, setExpandedNote] = useState(null);
   // Days completed before today: { [habit_id]: number }
   const [weeklyProgress, setWeeklyProgress] = useState({});
   const [pageState, setPageState] = useState('loading'); // loading | ready | no-duel
@@ -71,7 +75,7 @@ export default function CheckIn() {
           .lt('checked_date', today),
         supabase
           .from('check_ins')
-          .select('habit_id, completed, snapshot_url')
+          .select('habit_id, completed, snapshot_url, note')
           .eq('duel_id', duel.id)
           .eq('user_id', user.id)
           .eq('checked_date', today),
@@ -83,16 +87,19 @@ export default function CheckIn() {
       }
 
       const checkinsMap = {};
+      const notesMap = {};
       let snapshotExists = false;
       for (const ci of todayCheckins ?? []) {
         checkinsMap[ci.habit_id] = { completed: ci.completed, snapshot_url: ci.snapshot_url };
         if (ci.snapshot_url) snapshotExists = true;
+        if (ci.note) notesMap[ci.habit_id] = ci.note;
       }
 
       setDuelId(duel.id);
       setIsPractice(duel.is_practice ?? false);
       setDuelHabits(duelHabitData);
       setCheckins(checkinsMap);
+      setNotes(notesMap);
       setWeeklyProgress(progress);
       setHasSnapshotToday(snapshotExists);
       setPageState('ready');
@@ -204,6 +211,18 @@ export default function CheckIn() {
     }
   }
 
+  async function saveNote(habitId, text) {
+    const trimmed = text.trim().slice(0, 100);
+    setNotes((prev) => ({ ...prev, [habitId]: trimmed }));
+    await supabase
+      .from('check_ins')
+      .update({ note: trimmed || null })
+      .eq('duel_id', duelId)
+      .eq('user_id', user.id)
+      .eq('habit_id', habitId)
+      .eq('checked_date', today);
+  }
+
   function handleDone() {
     setShowExitToast(true);
     setTimeout(() => navigate('/'), 900);
@@ -240,16 +259,50 @@ export default function CheckIn() {
       </header>
 
       <ul className="checkin-page__list" role="group" aria-label="Habits to check in">
-        {duelHabits.map((h) => (
-          <li key={h.id}>
-            <HabitCheckItem
-              habit={{ name: h.habits.name, target_frequency: h.target_frequency }}
-              completed={checkins[h.habit_id]?.completed ?? false}
-              onChange={() => handleToggle(h)}
-              doneThisWeek={weeklyProgress[h.habit_id] ?? 0}
-            />
-          </li>
-        ))}
+        {duelHabits.map((h) => {
+          const isCompleted = checkins[h.habit_id]?.completed ?? false;
+          const existingNote = notes[h.habit_id] ?? '';
+          const isExpanded = expandedNote === h.habit_id;
+
+          return (
+            <li key={h.id}>
+              <HabitCheckItem
+                habit={{ name: h.habits.name, target_frequency: h.target_frequency }}
+                completed={isCompleted}
+                onChange={() => handleToggle(h)}
+                doneThisWeek={weeklyProgress[h.habit_id] ?? 0}
+              />
+              {isCompleted && (
+                <div className="checkin-note">
+                  {isExpanded ? (
+                    <input
+                      className="checkin-note__input"
+                      type="text"
+                      maxLength={100}
+                      defaultValue={existingNote}
+                      placeholder="Add a note…"
+                      autoFocus
+                      onBlur={(e) => { saveNote(h.habit_id, e.target.value); setExpandedNote(null); }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === 'Escape') {
+                          saveNote(h.habit_id, e.target.value);
+                          setExpandedNote(null);
+                        }
+                      }}
+                    />
+                  ) : (
+                    <button
+                      className="checkin-note__trigger"
+                      onClick={() => setExpandedNote(h.habit_id)}
+                    >
+                      {existingNote ? `"${existingNote}"` : '+ Add a note'}
+                    </button>
+                  )}
+                </div>
+              )}
+            </li>
+          );
+        })}
       </ul>
 
       {error && <p className="form-error" role="alert">{error}</p>}

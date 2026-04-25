@@ -21,7 +21,7 @@ import Onboarding from './pages/Onboarding';
 import HabitSelection from './pages/HabitSelection';
 import Dashboard from './pages/Dashboard';
 import CheckIn from './pages/CheckIn';
-import EvidenceFeed from './pages/EvidenceFeed';
+import CheckinGallery from './pages/CheckinGallery';
 import BattleResult from './pages/BattleResult';
 import Profile from './pages/Profile';
 import Admin from './pages/Admin';
@@ -45,7 +45,7 @@ function AppRoutes() {
       <Route path="/onboarding" element={<Onboarding />} />
       <Route path="/habits" element={<ProtectedRoute><HabitSelection /></ProtectedRoute>} />
       <Route path="/checkin" element={<ProtectedRoute><CheckIn /></ProtectedRoute>} />
-      <Route path="/evidence" element={<ProtectedRoute><EvidenceFeed /></ProtectedRoute>} />
+      <Route path="/gallery" element={<ProtectedRoute><CheckinGallery /></ProtectedRoute>} />
       <Route path="/result" element={<ProtectedRoute><BattleResult /></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
       <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
