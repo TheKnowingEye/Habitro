@@ -25,7 +25,6 @@ function groupByDay(snapshots) {
     if (!map.has(key)) map.set(key, []);
     map.get(key).push(s);
   }
-  // already sorted desc by created_at from query; extract days most-recent-first
   return Array.from(map.entries())
     .sort(([a], [b]) => b.localeCompare(a))
     .map(([date, items]) => ({ date, label: formatDayHeader(date), items }));
@@ -50,6 +49,7 @@ function Tile({ s, isMe, opponentName, onOpen }) {
       />
       <div className="evidence-tile__overlay">
         <span className="evidence-tile__habit">{habitStr}</span>
+        {s.note && <span className="evidence-tile__note">{s.note}</span>}
         <span className="evidence-tile__time">{timeStr}</span>
       </div>
       <span className={`evidence-tile__label evidence-tile__label--${isMe ? 'me' : 'them'}`}>
@@ -69,7 +69,6 @@ function Lightbox({ s, isMe, opponentName, onClose }) {
     if (e.target === e.currentTarget) onClose();
   }, [onClose]);
 
-  // Close on Escape
   useEffect(() => {
     const handler = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', handler);
@@ -84,6 +83,7 @@ function Lightbox({ s, isMe, opponentName, onClose }) {
         <div className="evidence-lightbox__meta">
           <span className={`evidence-tile__label evidence-tile__label--${isMe ? 'me' : 'them'}`}>{label}</span>
           <span className="evidence-lightbox__habit">{s.habits?.name}</span>
+          {s.note && <span className="evidence-lightbox__note">{s.note}</span>}
           <span className="evidence-lightbox__date">{dateStr} · {timeStr}</span>
         </div>
       </div>
@@ -91,7 +91,7 @@ function Lightbox({ s, isMe, opponentName, onClose }) {
   );
 }
 
-export default function EvidenceFeed() {
+export default function CheckinGallery() {
   const { user }   = useAuth();
   const navigate   = useNavigate();
 
@@ -123,7 +123,7 @@ export default function EvidenceFeed() {
 
       const { data: checkins } = await supabase
         .from('check_ins')
-        .select('habit_id, user_id, snapshot_url, checked_date, created_at, habits(name)')
+        .select('habit_id, user_id, snapshot_url, note, checked_date, created_at, habits(name)')
         .eq('duel_id', duel.id)
         .not('snapshot_url', 'is', null)
         .gte('checked_date', duel.week_start)
@@ -144,7 +144,7 @@ export default function EvidenceFeed() {
     return (
       <div className="page-empty">
         <p className="page-empty__text">No active duel.</p>
-        <p className="page-empty__sub">Evidence appears here during a live duel week.</p>
+        <p className="page-empty__sub">Check-ins appear here during a live duel week.</p>
       </div>
     );
   }
@@ -155,13 +155,13 @@ export default function EvidenceFeed() {
     <div className="evidence-page">
       <header className="evidence-page__header">
         <button className="evidence-page__back" onClick={() => navigate('/')} aria-label="Back">←</button>
-        <h1 className="evidence-page__title">Evidence Feed</h1>
+        <h1 className="evidence-page__title">Check-in Gallery</h1>
         <NotificationBell />
       </header>
 
       {days.length === 0 ? (
         <div className="page-empty">
-          <p className="page-empty__text">No snapshots yet.</p>
+          <p className="page-empty__text">No photos yet.</p>
           <p className="page-empty__sub">
             Photos appear here when you or {opponent?.username ?? 'your opponent'} attach one during check-in.
           </p>
