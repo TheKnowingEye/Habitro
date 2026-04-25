@@ -507,7 +507,7 @@ export default function Landing() {
               margin: '0 0 22px', fontSize: 14, lineHeight: 1.55,
               color: theme.textMuted, maxWidth: 300,
             }}>
-              A habit tracker with a pulse. Matched every Monday with one real person — seven days, side by side, may the most consistent soul win.
+              A habit tracker with a pulse. Matched every Monday with one real person, seven days, side by side, may the most consistent soul win.
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -546,7 +546,7 @@ export default function Landing() {
           fontFamily: '"Silkscreen", monospace',
           fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase',
           color: theme.accent,
-        }}>// the quiet idea</p>
+        }}>// the honest version</p>
         <h2 style={{
           margin: '10px 0 16px',
           fontFamily: '"Silkscreen", monospace',
@@ -555,10 +555,10 @@ export default function Landing() {
           color: theme.textPrimary,
         }}>Willpower is a<br />lonely game.</h2>
         <p style={{ margin: '0 0 14px', fontSize: 14.5, lineHeight: 1.65, color: theme.textMuted }}>
-          Alone, we coast. Paired up, we show up. The gentlest form of pressure is a person watching whether you did the thing today.
+          Habit trackers die quietly, not because you forget, but because nothing happens when you skip. Habitro fixes that. One person knows. Always.
         </p>
         <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.65, color: theme.textMuted }}>
-          Habitro pairs you with one real opponent every week. Seven days of quiet competition. Winner keeps their grove. Loser tends theirs harder.
+          Every Monday you get one opponent matched to your rank. Seven days, live scores, no grace period. At the end of the week the result is just numbers — no stories, no excuses. Miss one day and you fall behind. Show up and you climb. It's that simple, because it's real.
         </p>
       </section>
 
@@ -566,13 +566,13 @@ export default function Landing() {
       <section style={{ padding: '8px 24px 48px' }}>
         <FeatureCard theme={theme} number="01" icon={<DuelIcon color={theme.accent} />}
           title="Weekly Duel"
-          body="Every Monday you're matched with one real opponent. Seven days. Whoever tends their habits most wins the round." />
+          body="One opponent, matched by rank, every Monday. You both track habits for seven days. Whoever checks in more wins. That's it — no complicated scoring." />
         <FeatureCard theme={theme} number="02" icon={<FeedIcon color={theme.accent} />}
-          title="Proof Feed"
-          body="Drop a photo, a note, a small sign you showed up. Honest evidence — for you and the person you're running with." />
+          title="Evidence Feed"
+          body="Attach a photo when you check in. Your opponent sees it. There's something about knowing they're watching that makes you actually do it." />
         <FeatureCard theme={theme} number="03" icon={<RankIcon color={theme.accent} />}
-          title="Grow Your Grove"
-          body="Win weeks to climb ranks and grow your grove. Slip and it thins. Your garden reflects who you actually are." />
+          title="Rank Up"
+          body="Win and climb ranks, match with more consistent opponents. Lose and you drop. Your rank is just math — it reflects who actually showed up, week after week." />
       </section>
 
       {/* ── Week timeline ─────────────────────────────────────── */}
@@ -589,10 +589,9 @@ export default function Landing() {
         </p>
         <ul style={{ margin: '14px 0 0', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 14 }}>
           {[
-            ['Mon', 'Meet your companion. Pick one habit to tend.'],
-            ['Wed', 'Drop a small proof. A photo, a note, a mark on the page.'],
-            ['Sat', 'Cheer them on. Let yourself be cheered on.'],
-            ['Sun', 'The week closes softly. Your grove breathes forward.'],
+            ['Mon', 'You get your opponent. Pick your habits. The week starts whether you feel ready or not.'],
+            ['Daily', 'Check in each habit. Attach a photo if you want — it lands in their feed and yours.'],
+            ['Sun', 'Duel closes. Ranks settle. You either went up or you have something to fix next week.'],
           ].map(([day, text]) => (
             <li key={day} style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
               <span style={{
@@ -615,9 +614,9 @@ export default function Landing() {
           fontFamily: '"Fraunces", serif',
           fontSize: 24, lineHeight: 1.2, fontWeight: 500,
           color: theme.textPrimary,
-        }}>The path is nicer with company.</h3>
+        }}>One week. That's all it takes to know if you mean it.</h3>
         <p style={{ margin: '0 0 22px', fontSize: 14.5, color: theme.textMuted }}>
-          Free to begin. Your first companion is waiting next Monday.
+          Free to begin. Matches go out every Monday, your first opponent is closer than you think.
         </p>
         <PixelButton
           label="Start your journey"
