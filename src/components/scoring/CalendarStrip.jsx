@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 
 const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 export default function CalendarStrip({ weekStart, duelId, userId }) {
   const [tiles, setTiles] = useState(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!weekStart || !duelId || !userId) return;
@@ -43,6 +45,7 @@ export default function CalendarStrip({ weekStart, duelId, userId }) {
         const isToday = day === today;
         const isPast  = day < today;
         const done    = doneByDate[day] ?? 0;
+        const dateNum = parseInt(day.split('-')[2], 10);
 
         let state = 'neutral';
         if (isPast) {
@@ -50,9 +53,13 @@ export default function CalendarStrip({ weekStart, duelId, userId }) {
           else if (done < total / 2) state = 'orange';
           else if (done < total)     state = 'yellow';
           else                       state = 'green';
+        } else if (isToday && done > 0) {
+          if (done >= total)         state = 'green';
+          else if (done < total / 2) state = 'orange';
+          else                       state = 'yellow';
         }
 
-        return { day, label: DAY_LABELS[i], state, isToday };
+        return { day, label: DAY_LABELS[i], dateNum, state, isToday };
       }));
     }
 
@@ -62,16 +69,21 @@ export default function CalendarStrip({ weekStart, duelId, userId }) {
   if (!tiles) return null;
 
   return (
-    <div className="calendar-strip">
-      {tiles.map(({ day, label, state, isToday }) => (
+    <button
+      className="calendar-strip calendar-strip--clickable"
+      onClick={() => navigate('/calendar')}
+      aria-label="View full calendar history"
+    >
+      {tiles.map(({ day, label, dateNum, state, isToday }) => (
         <div
           key={day}
           className={`calendar-tile calendar-tile--${state}${isToday ? ' calendar-tile--today' : ''}`}
         >
           <span className="calendar-tile__label">{label}</span>
-          {isToday && <span className="calendar-tile__dot" aria-hidden="true" />}
+          <span className="calendar-tile__date">{dateNum}</span>
+          {isToday && <span className="calendar-tile__arrow" aria-hidden="true">▼</span>}
         </div>
       ))}
-    </div>
+    </button>
   );
 }

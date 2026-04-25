@@ -1123,51 +1123,251 @@ button { font-family: inherit; }
   gap: 6px;
 }
 
+.calendar-strip--clickable {
+  background: none;
+  border: none;
+  padding: 0;
+  width: 100%;
+  cursor: pointer;
+}
+
 .calendar-tile {
   flex: 1;
-  aspect-ratio: 1;
+  min-height: 58px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  border: 1.5px solid var(--color-border);
+  gap: 2px;
+  border: 2px solid var(--color-border);
   border-radius: var(--radius-sm);
   box-shadow: 0 3px 0 var(--color-border);
   background: var(--color-surface);
   position: relative;
-  padding-bottom: 6px;
+  padding: 6px 2px 10px;
 }
 
 .calendar-tile--today {
   border-color: var(--color-primary);
-  box-shadow: 0 3px 0 rgba(108,71,255,0.35);
+  box-shadow: 0 3px 0 rgba(108,71,255,0.5);
 }
-.calendar-tile--red    { background: rgba(192,57,43,0.12);  border-color: #c0392b; box-shadow: 0 3px 0 #7a1f1a; }
-.calendar-tile--orange { background: rgba(230,126,34,0.12); border-color: #e67e22; box-shadow: 0 3px 0 #8a4c14; }
-.calendar-tile--yellow { background: rgba(241,196,15,0.12); border-color: #f1c40f; box-shadow: 0 3px 0 #8a7009; }
-.calendar-tile--green  { background: rgba(39,174,96,0.12);  border-color: #27ae60; box-shadow: 0 3px 0 #16693a; }
+.calendar-tile--red    { background: rgba(192,57,43,0.28);  border-color: #c0392b; box-shadow: 0 3px 0 #7a1f1a; }
+.calendar-tile--orange { background: rgba(230,126,34,0.28); border-color: #e67e22; box-shadow: 0 3px 0 #8a4c14; }
+.calendar-tile--yellow { background: rgba(241,196,15,0.28); border-color: #f1c40f; box-shadow: 0 3px 0 #8a7009; }
+.calendar-tile--green  { background: rgba(39,174,96,0.28);  border-color: #27ae60; box-shadow: 0 3px 0 #16693a; }
 
 .calendar-tile__label {
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 700;
   color: var(--color-text-secondary);
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
+  line-height: 1;
 }
 .calendar-tile--red    .calendar-tile__label { color: #e57373; }
-.calendar-tile--orange .calendar-tile__label { color: #e67e22; }
+.calendar-tile--orange .calendar-tile__label { color: #e8924a; }
 .calendar-tile--yellow .calendar-tile__label { color: #f1c40f; }
 .calendar-tile--green  .calendar-tile__label { color: #27ae60; }
 
-.calendar-tile__dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--color-primary);
+.calendar-tile__date {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-text);
+  line-height: 1;
+}
+.calendar-tile--red    .calendar-tile__date { color: #e57373; }
+.calendar-tile--orange .calendar-tile__date { color: #e8924a; }
+.calendar-tile--yellow .calendar-tile__date { color: #f1c40f; }
+.calendar-tile--green  .calendar-tile__date { color: #5cd689; }
+
+.calendar-tile__arrow {
+  font-size: 7px;
+  color: var(--color-primary);
   position: absolute;
-  bottom: 4px;
+  bottom: 3px;
   left: 50%;
   transform: translateX(-50%);
+  line-height: 1;
+}
+
+/* ── Calendar History page ─────────────────────────────────── */
+.cal-history {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: var(--space-md);
+  padding-bottom: calc(var(--space-xl) + var(--safe-bottom));
+  min-height: 100vh;
+}
+
+.cal-history__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-lg);
+}
+
+.cal-history__back {
+  background: none;
+  border: none;
+  font-size: var(--font-xl);
+  color: var(--color-text);
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+}
+
+.cal-history__title {
+  font-family: 'Silkscreen', monospace;
+  font-size: var(--font-lg);
+  color: var(--color-text);
+}
+
+/* ── Stat cards ────────────────────────────────────────────── */
+.cal-history__stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-sm);
+  margin-bottom: var(--space-lg);
+}
+
+.cal-history__stat-card {
+  background: var(--color-surface);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 0 var(--color-border);
+  padding: var(--space-sm) var(--space-xs);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.cal-history__stat-value {
+  font-family: 'Silkscreen', monospace;
+  font-size: 15px;
+  color: var(--color-text);
+  line-height: 1.2;
+}
+
+.cal-history__stat-label {
+  font-size: 10px;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* ── Week rows ─────────────────────────────────────────────── */
+.cal-history__weeks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.cal-week {
+  background: var(--color-surface);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 0 var(--color-border);
+  overflow: hidden;
+}
+
+.cal-week__row {
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: var(--space-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  text-align: left;
+}
+
+.cal-week__strip {
+  display: flex;
+  gap: 4px;
+}
+
+.cal-week__tile {
+  min-height: 44px;
+  padding: 4px 2px 8px;
+}
+
+.cal-week__tile .calendar-tile__label { font-size: 8px; }
+.cal-week__tile .calendar-tile__date  { font-size: 11px; }
+.cal-week__tile .calendar-tile__arrow { font-size: 6px; }
+
+.cal-week__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cal-week__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cal-week__label {
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.cal-week__opp {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.cal-week__right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.cal-week__chevron {
+  font-size: 9px;
+  color: var(--color-text-secondary);
+}
+
+/* Result badge */
+.cal-result {
+  font-family: 'Silkscreen', monospace;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid;
+}
+
+.cal-result--win  { color: #27ae60; border-color: #27ae60; background: rgba(39,174,96,0.12); }
+.cal-result--loss { color: #e57373; border-color: #c0392b; background: rgba(192,57,43,0.12); }
+.cal-result--draw { color: var(--color-text-secondary); border-color: var(--color-border); background: transparent; }
+
+/* Expanded details */
+.cal-week__details {
+  border-top: 1px solid var(--color-border);
+  padding: var(--space-sm) var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.cal-week__detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cal-week__detail-label {
+  font-size: var(--font-sm);
+  color: var(--color-text-secondary);
+}
+
+.cal-week__detail-value {
+  font-family: 'Silkscreen', monospace;
+  font-size: 12px;
+  color: var(--color-text);
 }
 
 /* ── RankBadge ─────────────────────────────────────────────── */
