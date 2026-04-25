@@ -25,6 +25,7 @@ import CheckinGallery from './pages/CheckinGallery';
 import BattleResult from './pages/BattleResult';
 import Profile from './pages/Profile';
 import Admin from './pages/Admin';
+import CalendarHistory from './pages/CalendarHistory';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -49,6 +50,7 @@ function AppRoutes() {
       <Route path="/result" element={<ProtectedRoute><BattleResult /></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
       <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
+      <Route path="/calendar" element={<ProtectedRoute><CalendarHistory /></ProtectedRoute>} />
     </Routes>
   );
 }
