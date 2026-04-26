@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Quicksand:wght@400;500;600;700&display=swap');
+
 /* ── Design tokens ─────────────────────────────────────────── */
 :root {
   --color-bg:             #0f0f0f;
@@ -2255,6 +2257,39 @@ button { font-family: inherit; }
 .notif-item__time {
   font-size: 11px;
   color: var(--color-text-secondary);
+}
+
+/* ── Pixel game button ──────────────────────────────────────── */
+.habitro-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 14px 20px;
+  background: var(--btn-bg, #C97D60);
+  color: inherit;
+  border: 2px solid var(--btn-border, rgba(62,47,36,0.3));
+  border-radius: 4px;
+  font-family: 'Silkscreen', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 4px 0 var(--btn-shadow, rgba(62,47,36,0.35));
+  transform: translateY(0);
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.habitro-btn:active {
+  transform: translateY(4px);
+  box-shadow: none;
+}
+
+/* ── CampScene animations ───────────────────────────────────── */
+@keyframes fireGlow {
+  0%   { transform: scaleY(1) scaleX(1); }
+  100% { transform: scaleY(1.08) scaleX(0.95); }
 }
 
 /* ── Onboarding scene animations ────────────────────────────── */
