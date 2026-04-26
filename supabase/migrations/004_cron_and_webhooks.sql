@@ -112,5 +112,21 @@ select cron.schedule(
 -- webhook body shape { type, table, record } and routes to
 -- handleOpponentCheckin(). No additional payload configuration needed.
 --
+-- End-of-day HP drain: midnight UTC daily
+select cron.schedule(
+  'end-of-day',
+  '0 0 * * *',
+  $$
+  select net.http_post(
+    url     := 'https://<PROJECT_REF>.supabase.co/functions/v1/end-of-day',
+    headers := jsonb_build_object(
+      'Content-Type',  'application/json',
+      'Authorization', 'Bearer <SERVICE_ROLE_KEY>'
+    ),
+    body    := '{}'::jsonb
+  )
+  $$
+);
+
 -- ── To remove a cron job ─────────────────────────────────────
 -- select cron.unschedule('job-name');
