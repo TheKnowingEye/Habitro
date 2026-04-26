@@ -3,6 +3,7 @@
  * Runs Monday 00:00 UTC via Supabase cron.
  *
  * Algorithm:
+ *  0. Process last week's league promotions / demotions.
  *  1. Find all real-user profiles with no active REAL duel this week.
  *     (Practice duels do not count — users with only a practice duel join the pool.)
  *  2. Fisher-Yates shuffle the pool.
@@ -13,10 +14,14 @@
  *     so bot-checkin can operate from Day 1.
  *  6. Close open practice duels for all newly matched real users.
  *  7. Fire new-duel push notifications (bots are skipped).
+ *  8. Assign each newly matched real user to a league for this week.
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const RANK_TIERS = ['bronze', 'silver', 'gold', 'platinum', 'elite'] as const;
+type TierId = typeof RANK_TIERS[number];
 
 serve(async (_req) => {
   const supabase = createClient(
@@ -31,6 +36,11 @@ serve(async (_req) => {
     const weekEnd   = getSunday(weekStart);
     const startStr  = toDateStr(weekStart);
     const endStr    = toDateStr(weekEnd);
+
+    const errors: string[] = [];
+
+    // ── 0. Process last week's league promotions / demotions ──
+    await processLastWeekLeagues(supabase, startStr, errors);
 
     // ── 1. Real users already matched this week (practice duels excluded) ──
     const { data: existingDuels, error: duelFetchErr } = await supabase
@@ -85,12 +95,10 @@ serve(async (_req) => {
         const duelId = crypto.randomUUID();
         botIds.add(bot.id);
 
-        // Will be inserted with the rest of the duels
-        pool.push(oddUserId);        // put odd user back — we'll handle it manually below
-        pool.push(bot.id);           // pair with bot at end of pool
+        pool.push(oddUserId);
+        pool.push(bot.id);
         botIds.add(bot.id);
 
-        // Auto-assign 3 random habits to bot so bot-checkin can run from Monday
         const { data: habits } = await supabase
           .from('habits')
           .select('id, min_frequency');
@@ -105,13 +113,8 @@ serve(async (_req) => {
               target_frequency: h.min_frequency,
             });
           }
-          // Patch the duel_id into botHabitRows — we know it because we just built it
-          // but the duel is created in the loop below using pool pairs, so we need
-          // to intercept when pool[i] === oddUserId && pool[i+1] === bot.id.
-          // Simplest: store the expected pair and patch after the loop.
         }
       } else {
-        // No bots seeded — fall back to leaving user unmatched
         console.warn(`No bots available; user ${oddUserId} skipped`);
       }
     }
@@ -119,7 +122,6 @@ serve(async (_req) => {
     // ── 4. Create duel + score rows ──────────────────────────────
     const duelsToInsert:  Array<Record<string, unknown>> = [];
     const scoresToInsert: Array<Record<string, unknown>> = [];
-    // Map from (userA:userB) → duelId so we can patch botHabitRows
     const pairDuelId = new Map<string, string>();
 
     for (let i = 0; i + 1 < pool.length; i += 2) {
@@ -141,10 +143,8 @@ serve(async (_req) => {
       );
     }
 
-    // Patch correct duel_id into bot habit rows
     if (botHabitRows.length > 0) {
       const botId   = botHabitRows[0].user_id;
-      // Find the duel that contains this bot
       const botDuel = duelsToInsert.find(
         (d) => d.user_b_id === botId || d.user_a_id === botId
       );
@@ -153,8 +153,7 @@ serve(async (_req) => {
       }
     }
 
-    const errors: string[] = [];
-    const realUserIds: string[] = []; // newly matched real users (for practice duel cleanup)
+    const realUserIds: string[] = [];
 
     if (duelsToInsert.length > 0) {
       const { error: duelErr } = await supabase.from('duels').insert(duelsToInsert);
@@ -169,7 +168,6 @@ serve(async (_req) => {
           if (habitErr) errors.push(`bot habit insert: ${habitErr.message}`);
         }
 
-        // Collect real user IDs (exclude bots) for practice duel cleanup
         for (const d of duelsToInsert) {
           if (!botIds.has(d.user_a_id as string)) realUserIds.push(d.user_a_id as string);
           if (d.user_b_id && !botIds.has(d.user_b_id as string)) realUserIds.push(d.user_b_id as string);
@@ -192,6 +190,11 @@ serve(async (_req) => {
           user_b_id: d.user_b_id as string,
         }));
         await sendNewDuelNotifications(supabase, notifyDuels, botIds);
+
+        // ── 7. League assignment for newly matched real users ─────
+        if (realUserIds.length > 0) {
+          await assignLeagues(supabase, realUserIds, startStr, endStr, errors);
+        }
       }
     }
 
@@ -211,7 +214,180 @@ serve(async (_req) => {
   }
 });
 
-// ── Helpers ───────────────────────────────────────────────────
+// ── League helpers ────────────────────────────────────────────
+
+/**
+ * Ranks last week's league members by weekly_xp, promotes top 5 real users
+ * to next tier, demotes bottom 5 to previous tier, records positions.
+ */
+async function processLastWeekLeagues(
+  supabase      : ReturnType<typeof createClient>,
+  thisWeekStart : string,
+  errors        : string[]
+) {
+  const { data: lastLeagues, error } = await supabase
+    .from('leagues')
+    .select('id, tier')
+    .lt('week_end', thisWeekStart);
+
+  if (error) { errors.push(`last-week leagues fetch: ${error.message}`); return; }
+  if (!lastLeagues?.length) return;
+
+  const leagueIds = lastLeagues.map((l) => l.id);
+
+  const { data: members } = await supabase
+    .from('league_members')
+    .select('id, league_id, user_id, weekly_xp, is_bot')
+    .in('league_id', leagueIds);
+
+  const byLeague: Record<string, NonNullable<typeof members>> = {};
+  for (const m of members ?? []) {
+    if (!byLeague[m.league_id]) byLeague[m.league_id] = [];
+    byLeague[m.league_id].push(m);
+  }
+
+  for (const league of lastLeagues) {
+    const real = (byLeague[league.id] ?? [])
+      .filter((m) => !m.is_bot)
+      .sort((a, b) => b.weekly_xp - a.weekly_xp);
+
+    if (!real.length) continue;
+
+    const tierIdx  = RANK_TIERS.indexOf(league.tier as TierId);
+    const nextTier = tierIdx < RANK_TIERS.length - 1 ? RANK_TIERS[tierIdx + 1] : null;
+    const prevTier = tierIdx > 0 ? RANK_TIERS[tierIdx - 1] : null;
+
+    for (let i = 0; i < real.length; i++) {
+      const member   = real[i];
+      const position = i + 1;
+      const promoted = nextTier !== null && i < 5;
+      const demoted  = prevTier !== null && i >= Math.max(5, real.length - 5) && !promoted;
+
+      await supabase
+        .from('league_members')
+        .update({ position, promoted, demoted })
+        .eq('id', member.id);
+
+      if (promoted) {
+        const { error: e } = await supabase
+          .from('profiles').update({ rank_tier: nextTier }).eq('id', member.user_id);
+        if (e) errors.push(`promote ${member.user_id}: ${e.message}`);
+      } else if (demoted) {
+        const { error: e } = await supabase
+          .from('profiles').update({ rank_tier: prevTier }).eq('id', member.user_id);
+        if (e) errors.push(`demote ${member.user_id}: ${e.message}`);
+      }
+    }
+  }
+}
+
+/**
+ * Assigns newly matched real users to leagues for this week.
+ * Fills open slots in existing leagues first; creates new ones as needed,
+ * padding empty slots with random bots at 50–300 weekly_xp.
+ */
+async function assignLeagues(
+  supabase    : ReturnType<typeof createClient>,
+  realUserIds : string[],
+  startStr    : string,
+  endStr      : string,
+  errors      : string[]
+) {
+  const { data: userProfiles } = await supabase
+    .from('profiles')
+    .select('id, rank_tier')
+    .in('id', realUserIds);
+
+  const byTier: Record<string, string[]> = {};
+  for (const p of userProfiles ?? []) {
+    if (!byTier[p.rank_tier]) byTier[p.rank_tier] = [];
+    byTier[p.rank_tier].push(p.id);
+  }
+
+  const { data: bots } = await supabase
+    .from('profiles').select('id').eq('is_bot', true);
+  const allBotIds = (bots ?? []).map((b) => b.id);
+
+  for (const [tier, usersInTier] of Object.entries(byTier)) {
+    const remaining = [...usersInTier];
+
+    // Fill open slots in existing leagues for this tier + week
+    const { data: existingLeagues } = await supabase
+      .from('leagues').select('id').eq('tier', tier).eq('week_start', startStr);
+
+    if (existingLeagues?.length) {
+      const { data: memberRows } = await supabase
+        .from('league_members').select('league_id')
+        .in('league_id', existingLeagues.map((l) => l.id));
+
+      const countByLeague: Record<string, number> = {};
+      for (const m of memberRows ?? []) {
+        countByLeague[m.league_id] = (countByLeague[m.league_id] ?? 0) + 1;
+      }
+
+      for (const { id: leagueId } of existingLeagues) {
+        if (!remaining.length) break;
+        const available = 20 - (countByLeague[leagueId] ?? 0);
+        if (available <= 0) continue;
+
+        const batch = remaining.splice(0, available);
+        const { error } = await supabase
+          .from('league_members')
+          .upsert(
+            batch.map((uid) => ({ league_id: leagueId, user_id: uid, weekly_xp: 0 })),
+            { onConflict: 'league_id,user_id', ignoreDuplicates: true }
+          );
+        if (error) errors.push(`fill league ${leagueId}: ${error.message}`);
+      }
+    }
+
+    // Create new leagues for any still-unassigned users
+    while (remaining.length > 0) {
+      const batch = remaining.splice(0, 20);
+
+      const { count } = await supabase
+        .from('leagues')
+        .select('id', { count: 'exact', head: true })
+        .eq('tier', tier)
+        .eq('week_start', startStr);
+
+      const { data: newLeague, error: leagueErr } = await supabase
+        .from('leagues')
+        .insert({ tier, week_start: startStr, week_end: endStr, bucket_number: (count ?? 0) + 1 })
+        .select('id')
+        .single();
+
+      if (leagueErr || !newLeague) {
+        errors.push(`create league ${tier}: ${leagueErr?.message ?? 'no id'}`);
+        continue;
+      }
+
+      const rows: Array<Record<string, unknown>> = batch.map((uid) => ({
+        league_id: newLeague.id, user_id: uid, weekly_xp: 0, is_bot: false,
+      }));
+
+      const shuffledBots = [...allBotIds]
+        .sort(() => Math.random() - 0.5)
+        .slice(0, 20 - batch.length);
+
+      for (const botId of shuffledBots) {
+        rows.push({
+          league_id: newLeague.id,
+          user_id:   botId,
+          weekly_xp: Math.floor(Math.random() * 251) + 50,
+          is_bot:    true,
+        });
+      }
+
+      const { error: memberErr } = await supabase
+        .from('league_members')
+        .upsert(rows, { onConflict: 'league_id,user_id', ignoreDuplicates: true });
+      if (memberErr) errors.push(`populate league ${newLeague.id}: ${memberErr.message}`);
+    }
+  }
+}
+
+// ── Existing notification helper ──────────────────────────────
 
 async function sendNewDuelNotifications(
   supabase  : ReturnType<typeof createClient>,
@@ -233,6 +409,8 @@ async function sendNewDuelNotifications(
   const { error } = await supabase.from('notifications').insert(rows);
   if (error) console.warn('Failed to insert new-duel notifications:', error.message);
 }
+
+// ── Date utilities ────────────────────────────────────────────
 
 function getMonday(date: Date): Date {
   const d   = new Date(date);

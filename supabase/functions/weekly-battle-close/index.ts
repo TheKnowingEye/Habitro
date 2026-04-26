@@ -7,6 +7,8 @@
  *  2. Closes the duel row.
  *  3. Updates winner profile: wins++, rank_points up, promote tier if threshold crossed.
  *  4. Updates loser profile: losses++, rank_points down, demote tier if at buffer floor.
+ *  5. Awards duel-end XP: winner +200, loser +50, draw +100 each.
+ *     Recalculates level from level_thresholds after each XP award.
  *
  * Rank model
  * ──────────
@@ -35,8 +37,13 @@ const RANK_TIERS = [
 
 type TierId = typeof RANK_TIERS[number]['id'];
 
-const WIN_PTS  = 20; // rank_points awarded to winner
-const LOSS_PTS = 20; // rank_points deducted from loser
+const WIN_PTS  = 20;
+const LOSS_PTS = 20;
+
+// XP awarded at duel end (mirrors scoring.js)
+const WIN_XP  = 200;
+const LOSS_XP = 50;
+const DRAW_XP = 100;
 
 serve(async (_req) => {
   const supabase = createClient(
@@ -58,8 +65,6 @@ serve(async (_req) => {
     if (duelErr) throw duelErr;
     if (!duels?.length) return json({ closed: 0, message: 'No duels to close.' });
 
-    // Batch-load profiles and scores for all affected users
-    // Practice duels have user_b_id = null — filter those out of the userIds list
     const userIds = duels.flatMap((d) => [d.user_a_id, d.user_b_id].filter(Boolean));
 
     const [{ data: profiles }, { data: scores }] = await Promise.all([
@@ -78,7 +83,7 @@ serve(async (_req) => {
 
     for (const duel of duels) {
       try {
-        // ── Practice duels: close silently, no rank/win/loss changes ──
+        // ── Practice duels: close silently, no rank/win/loss/XP changes ──
         if (duel.is_practice) {
           const { error: closeErr } = await supabase
             .from('duels')
@@ -112,13 +117,20 @@ serve(async (_req) => {
           await applyWin(supabase,  winner, winnerId);
           await applyLoss(supabase, loser,  loserId);
 
-          // Refresh local profile copies so subsequent duels in this batch
-          // see the updated values (same user could theoretically appear again,
-          // though the unique-active-duel constraint makes this impossible in MVP).
           profileMap[winnerId] = { ...winner, ...buildWinUpdate(winner) };
           profileMap[loserId]  = { ...loser,  ...buildLossUpdate(loser) };
         }
-        // Draw: no rank changes, no wins/losses incremented.
+
+        // ── 3. Award duel-end XP ──────────────────────────────
+        if (isDraw) {
+          const aId = duel.user_a_id;
+          const bId = duel.user_b_id;
+          await addXPAndRecalcLevel(supabase, aId, DRAW_XP, profileMap[aId]?.total_xp ?? 0);
+          await addXPAndRecalcLevel(supabase, bId, DRAW_XP, profileMap[bId]?.total_xp ?? 0);
+        } else if (winnerId && loserId) {
+          await addXPAndRecalcLevel(supabase, winnerId, WIN_XP,  profileMap[winnerId]?.total_xp ?? 0);
+          await addXPAndRecalcLevel(supabase, loserId,  LOSS_XP, profileMap[loserId]?.total_xp  ?? 0);
+        }
 
         closed++;
       } catch (err) {
@@ -134,9 +146,44 @@ serve(async (_req) => {
   }
 });
 
+// ── XP helpers ────────────────────────────────────────────────
+
+/**
+ * Adds xpToAdd to a user's total_xp and recalculates level + level_title
+ * by querying level_thresholds. currentXP is the pre-award value from profileMap.
+ */
+async function addXPAndRecalcLevel(
+  supabase   : ReturnType<typeof createClient>,
+  userId     : string,
+  xpToAdd    : number,
+  currentXP  : number
+) {
+  const newXP = currentXP + xpToAdd;
+
+  await supabase
+    .from('profiles')
+    .update({ total_xp: newXP })
+    .eq('id', userId);
+
+  // Recalculate level from level_thresholds table
+  const { data: lt } = await supabase
+    .from('level_thresholds')
+    .select('level, title')
+    .lte('xp_required', newXP)
+    .order('level', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (lt) {
+    await supabase
+      .from('profiles')
+      .update({ level: lt.level, level_title: lt.title })
+      .eq('id', userId);
+  }
+}
+
 // ── Rank helpers ──────────────────────────────────────────────
 
-/** Highest tier the user qualifies for given their lifetime wins. */
 function targetTier(wins: number): TierId {
   let tier = RANK_TIERS[0];
   for (const t of RANK_TIERS) {
@@ -145,13 +192,11 @@ function targetTier(wins: number): TierId {
   return tier.id;
 }
 
-/** One tier below the current one, or null if already Bronze. */
 function demotedTier(currentId: TierId): TierId | null {
   const idx = RANK_TIERS.findIndex((t) => t.id === currentId);
   return idx > 0 ? RANK_TIERS[idx - 1].id : null;
 }
 
-/** rank_points a user starts with on entering a tier — exactly demotionBuffer losses of runway. */
 function entryPoints(tierId: TierId): number {
   const tier = RANK_TIERS.find((t) => t.id === tierId)!;
   return tier.demotionBuffer * LOSS_PTS;
@@ -169,17 +214,14 @@ function buildWinUpdate(profile: Record<string, unknown>) {
 }
 
 function buildLossUpdate(profile: Record<string, unknown>) {
-  const newLosses       = ((profile.losses as number) ?? 0) + 1;
-  const currentRankPts  = (profile.rank_points as number) ?? 0;
-  const currentTier     = profile.rank_tier as TierId;
-  const below           = demotedTier(currentTier);
+  const newLosses      = ((profile.losses as number) ?? 0) + 1;
+  const currentRankPts = (profile.rank_points as number) ?? 0;
+  const currentTier    = profile.rank_tier as TierId;
+  const below          = demotedTier(currentTier);
 
-  // Demote when rank_points are already at 0 AND there's a tier to fall into.
-  // This means: first loss drops points toward 0; second loss at 0 → demote.
   const shouldDemote = currentRankPts <= 0 && below !== null;
-
-  const newTier    = shouldDemote ? below! : currentTier;
-  const newRankPts = shouldDemote
+  const newTier      = shouldDemote ? below! : currentTier;
+  const newRankPts   = shouldDemote
     ? entryPoints(below!)
     : Math.max(0, currentRankPts - LOSS_PTS);
 
