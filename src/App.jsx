@@ -19,11 +19,8 @@ class ErrorBoundary extends Component {
 import Landing from './pages/Landing';
 import Onboarding from './pages/Onboarding';
 import HabitSelection from './pages/HabitSelection';
-import Dashboard from './pages/Dashboard';
-import CheckIn from './pages/CheckIn';
-import CheckinGallery from './pages/CheckinGallery';
+import GameShell from './pages/GameShell';
 import BattleResult from './pages/BattleResult';
-import Profile from './pages/Profile';
 import Admin from './pages/Admin';
 import CalendarHistory from './pages/CalendarHistory';
 
@@ -36,7 +33,7 @@ function ProtectedRoute({ children }) {
 function RootRoute() {
   const { user, loading } = useAuth();
   if (loading) return null;
-  return user ? <Dashboard /> : <Landing />;
+  return user ? <GameShell /> : <Landing />;
 }
 
 function AppRoutes() {
@@ -45,11 +42,12 @@ function AppRoutes() {
       <Route path="/" element={<RootRoute />} />
       <Route path="/onboarding" element={<Onboarding />} />
       <Route path="/habits" element={<ProtectedRoute><HabitSelection /></ProtectedRoute>} />
-      <Route path="/checkin" element={<ProtectedRoute><CheckIn /></ProtectedRoute>} />
-      <Route path="/gallery" element={<ProtectedRoute><CheckinGallery /></ProtectedRoute>} />
-      <Route path="/result" element={<ProtectedRoute><BattleResult /></ProtectedRoute>} />
-      <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-      <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
+      {/* /checkin, /gallery, /profile now live inside GameShell tabs */}
+      <Route path="/checkin" element={<Navigate to="/" replace />} />
+      <Route path="/gallery"  element={<Navigate to="/" replace />} />
+      <Route path="/profile"  element={<Navigate to="/" replace />} />
+      <Route path="/result"   element={<ProtectedRoute><BattleResult /></ProtectedRoute>} />
+      <Route path="/admin"    element={<ProtectedRoute><Admin /></ProtectedRoute>} />
       <Route path="/calendar" element={<ProtectedRoute><CalendarHistory /></ProtectedRoute>} />
     </Routes>
   );
