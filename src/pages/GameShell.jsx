@@ -27,6 +27,7 @@ export default function GameShell() {
   const [historyOpen,  setHistoryOpen]  = useState(false);
   const [leaderOpen,   setLeaderOpen]   = useState(false);
   const [profile,      setProfile]      = useState(null);
+  const [streak,       setStreak]       = useState(0);
   const [notifs,       setNotifs]       = useState([]);
   const [matchDuel,      setMatchDuel]      = useState(null);
   const [matchMyProf,    setMatchMyProf]    = useState(null);
@@ -156,7 +157,7 @@ export default function GameShell() {
         <div style={{ flex: 1 }} />
 
         <StatBadge icon="⚡" value={profile?.total_xp ?? '—'} label="XP"     dark={dark} />
-        <StatBadge icon="🔥" value={0}                         label="STREAK" dark={dark} />
+        <StatBadge icon="🔥" value={streak}                    label="STREAK" dark={dark} />
 
         <button
           onClick={handleBellClick}
@@ -184,6 +185,7 @@ export default function GameShell() {
             userAvatar={profile?.avatar_kind || 'fox'}
             onOpenLeader={() => setLeaderOpen(true)}
             onOpenHistory={() => setHistoryOpen(true)}
+            onStreakChange={setStreak}
           />
         )}
         {tab === 'checkin' && (
