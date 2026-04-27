@@ -6,6 +6,9 @@ import { HABITRO_THEMES, getThemeForHour } from '../lib/themes';
 import StatBadge from '../components/ui/StatBadge';
 import NotifDrawer from '../components/ui/NotifDrawer';
 import HistoryModal from '../components/ui/HistoryModal';
+import LeaderboardModal from '../components/ui/LeaderboardModal';
+import MatchRevealScreen from '../components/ui/MatchRevealScreen';
+import HabitSetupModal from '../components/ui/HabitSetupModal';
 import BottomNav from '../components/ui/BottomNav';
 
 import HomeScreen from './HomeScreen';
@@ -19,10 +22,15 @@ export default function GameShell() {
 
   const [now,         setNow]         = useState(new Date());
   const [tab,         setTab]         = useState('home');
-  const [notifOpen,   setNotifOpen]   = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [profile,     setProfile]     = useState(null);
-  const [notifs,      setNotifs]      = useState([]);
+  const [notifOpen,    setNotifOpen]    = useState(false);
+  const [historyOpen,  setHistoryOpen]  = useState(false);
+  const [leaderOpen,   setLeaderOpen]   = useState(false);
+  const [profile,      setProfile]      = useState(null);
+  const [notifs,       setNotifs]       = useState([]);
+  const [matchDuel,      setMatchDuel]      = useState(null);
+  const [matchMyProf,    setMatchMyProf]    = useState(null);
+  const [matchOppProf,   setMatchOppProf]   = useState(null);
+  const [habitSetupDuel, setHabitSetupDuel] = useState(null);
 
   const themeKey = getThemeForHour(now.getHours());
   const theme    = HABITRO_THEMES[themeKey];
@@ -36,12 +44,57 @@ export default function GameShell() {
 
   useEffect(() => {
     if (!user) return;
-    supabase
-      .from('profiles')
-      .select('total_xp, avatar_kind')
-      .eq('id', user.id)
-      .single()
-      .then(({ data }) => { if (data) setProfile(data); });
+
+    async function loadProfile() {
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('total_xp, avatar_kind, rank_tier')
+        .eq('id', user.id)
+        .single();
+      if (prof) setProfile(prof);
+
+      // Check for a fresh duel this week that hasn't been revealed yet
+      const today = new Date();
+      const daysFromMon = (today.getDay() + 6) % 7;
+      const monday = new Date(today);
+      monday.setDate(today.getDate() - daysFromMon);
+      const mondayStr = monday.toISOString().split('T')[0];
+
+      const { data: duel } = await supabase
+        .from('duels')
+        .select('id, week_start, week_end, user_a_id, user_b_id')
+        .or(`user_a_id.eq.${user.id},user_b_id.eq.${user.id}`)
+        .eq('week_start', mondayStr)
+        .eq('is_practice', false)
+        .eq('status', 'active')
+        .maybeSingle();
+
+      if (duel) {
+        // Check if habits are already set for this week
+        const { count } = await supabase
+          .from('duel_habits')
+          .select('id', { count: 'exact', head: true })
+          .eq('duel_id', duel.id)
+          .eq('user_id', user.id);
+
+        if ((count ?? 0) === 0) setHabitSetupDuel(duel);
+
+        // Show match reveal if not yet seen
+        if (!localStorage.getItem(`match_revealed_${duel.id}`)) {
+          const oppId = duel.user_a_id === user.id ? duel.user_b_id : duel.user_a_id;
+          const { data: oppProf } = await supabase
+            .from('profiles')
+            .select('username, avatar_kind, rank_tier')
+            .eq('id', oppId)
+            .single();
+          setMatchDuel(duel);
+          setMatchMyProf(prof);
+          setMatchOppProf(oppProf);
+        }
+      }
+    }
+
+    loadProfile();
   }, [user]);
 
   useEffect(() => {
@@ -56,6 +109,24 @@ export default function GameShell() {
   }, [user]);
 
   const unreadCount = notifs.filter(n => !n.read_at).length;
+
+  async function handleBellClick() {
+    const opening = !notifOpen;
+    setNotifOpen(opening);
+    if (opening && user && unreadCount > 0) {
+      setNotifs(prev => prev.map(n => ({ ...n, read_at: n.read_at || new Date().toISOString() })));
+      await supabase
+        .from('notifications')
+        .update({ read_at: new Date().toISOString() })
+        .eq('user_id', user.id)
+        .is('read_at', null);
+    }
+  }
+
+  function handleMatchDismiss() {
+    if (matchDuel) localStorage.setItem(`match_revealed_${matchDuel.id}`, '1');
+    setMatchDuel(null);
+  }
 
   return (
     <div style={{
@@ -86,7 +157,7 @@ export default function GameShell() {
         <StatBadge icon="🔥" value={0}                         label="STREAK" dark={dark} />
 
         <button
-          onClick={() => setNotifOpen(o => !o)}
+          onClick={handleBellClick}
           style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: 4, lineHeight: 1, color: 'rgba(255,255,255,0.75)' }}
         >
           🔔
@@ -109,7 +180,7 @@ export default function GameShell() {
             dark={dark}
             accent={accent}
             userAvatar={profile?.avatar_kind || 'fox'}
-            onOpenLeader={() => {}}
+            onOpenLeader={() => setLeaderOpen(true)}
             onOpenHistory={() => setHistoryOpen(true)}
           />
         )}
@@ -142,8 +213,37 @@ export default function GameShell() {
         partial={theme.partial}
       />
 
+      {/* ── Leaderboard modal ─────────────────────────────────── */}
+      <LeaderboardModal
+        open={leaderOpen}
+        onClose={() => setLeaderOpen(false)}
+        dark={dark}
+        accent={accent}
+      />
+
       {/* ── Bottom nav ────────────────────────────────────────── */}
       <BottomNav active={tab} onSelect={setTab} accent={accent} dark={dark} />
+
+      {/* ── Habit setup ───────────────────────────────────────── */}
+      {habitSetupDuel && !matchDuel && (
+        <HabitSetupModal
+          duel={habitSetupDuel}
+          dark={dark}
+          accent={accent}
+          onDone={() => setHabitSetupDuel(null)}
+        />
+      )}
+
+      {/* ── Match reveal ──────────────────────────────────────── */}
+      {matchDuel && (
+        <MatchRevealScreen
+          duel={matchDuel}
+          myProfile={matchMyProf}
+          oppProfile={matchOppProf}
+          accent={accent}
+          onDismiss={handleMatchDismiss}
+        />
+      )}
     </div>
   );
 }

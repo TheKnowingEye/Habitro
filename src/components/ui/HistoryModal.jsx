@@ -3,7 +3,32 @@ import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { darken } from '../../lib/darken';
 
-const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const DAY_LABELS   = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const HISTORY_WEEKS = 4;
+
+// Returns N Mon→Sun ranges ending with the current week, oldest first
+function getCalendarWeeks(n) {
+  const today = new Date();
+  const daysFromMonday = (today.getDay() + 6) % 7;
+  const thisMonday = new Date(today);
+  thisMonday.setDate(today.getDate() - daysFromMonday);
+  thisMonday.setHours(0, 0, 0, 0);
+
+  const weeks = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const start = new Date(thisMonday);
+    start.setDate(thisMonday.getDate() - i * 7);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    weeks.push({
+      weekStart: start.toISOString().split('T')[0],
+      weekEnd:   end.toISOString().split('T')[0],
+      isNow:     i === 0,
+      label:     i === 0 ? 'WK 4\n(NOW)' : `WK ${n - i}`,
+    });
+  }
+  return weeks;
+}
 
 export default function HistoryModal({ open, onClose, dark, accent, partial }) {
   const { user }  = useAuth();
@@ -15,51 +40,58 @@ export default function HistoryModal({ open, onClose, dark, accent, partial }) {
     setLoading(true);
 
     async function load() {
+      const calWeeks = getCalendarWeeks(HISTORY_WEEKS);
+      const earliest = calWeeks[0].weekStart;
+
+      // Fetch duels that fall within the 4-week window
       const { data: duels } = await supabase
         .from('duels')
         .select('id, week_start, week_end, status, user_a_id, user_b_id')
         .or(`user_a_id.eq.${user.id},user_b_id.eq.${user.id}`)
         .in('status', ['active', 'closed'])
+        .gte('week_start', earliest)
         .order('week_start', { ascending: false })
-        .limit(4);
+        .limit(HISTORY_WEEKS);
 
-      if (!duels?.length) { setWeeks([]); setLoading(false); return; }
+      const today    = new Date().toISOString().split('T')[0];
+      const duelIds  = (duels ?? []).map(d => d.id);
+      let doneMap      = {};
+      let habitsByDuel = {};
 
-      const today   = new Date().toISOString().split('T')[0];
-      const duelIds = duels.map(d => d.id);
+      if (duelIds.length) {
+        const [{ data: myCheckins }, { data: myHabits }] = await Promise.all([
+          supabase.from('check_ins').select('duel_id, checked_date').in('duel_id', duelIds).eq('user_id', user.id).eq('completed', true),
+          supabase.from('duel_habits').select('duel_id, habit_id').in('duel_id', duelIds).eq('user_id', user.id),
+        ]);
 
-      const [{ data: myCheckins }, { data: myHabits }] = await Promise.all([
-        supabase.from('check_ins').select('duel_id, checked_date').in('duel_id', duelIds).eq('user_id', user.id).eq('completed', true),
-        supabase.from('duel_habits').select('duel_id, habit_id').in('duel_id', duelIds).eq('user_id', user.id),
-      ]);
-
-      const doneMap = {};
-      const habitsByDuel = {};
-      for (const ci of myCheckins ?? []) {
-        if (!doneMap[ci.duel_id]) doneMap[ci.duel_id] = {};
-        doneMap[ci.duel_id][ci.checked_date] = (doneMap[ci.duel_id][ci.checked_date] ?? 0) + 1;
+        for (const ci of myCheckins ?? []) {
+          if (!doneMap[ci.duel_id]) doneMap[ci.duel_id] = {};
+          doneMap[ci.duel_id][ci.checked_date] = (doneMap[ci.duel_id][ci.checked_date] ?? 0) + 1;
+        }
+        for (const h of myHabits ?? []) {
+          habitsByDuel[h.duel_id] = (habitsByDuel[h.duel_id] ?? 0) + 1;
+        }
       }
-      for (const h of myHabits ?? []) {
-        habitsByDuel[h.duel_id] = (habitsByDuel[h.duel_id] ?? 0) + 1;
-      }
 
-      // Build weeks newest→oldest (duels is already sorted desc)
-      const weekRows = duels.map((duel, wi) => {
-        const total  = habitsByDuel[duel.id] ?? 0;
-        const dayMap = doneMap[duel.id] ?? {};
-        const isNow  = duel.status === 'active';
-        const label  = isNow ? 'WK 4\n(NOW)' : `WK ${duels.length - wi}`;
-        const vals   = Array.from({ length: 7 }, (_, i) => {
-          const d = new Date(duel.week_start + 'T00:00:00');
+      // Build week rows — always 4, empty if no duel that week
+      const weekRows = calWeeks.map(cw => {
+        const duel   = (duels ?? []).find(d => d.week_start === cw.weekStart);
+        const total  = duel ? (habitsByDuel[duel.id] ?? 0) : 0;
+        const dayMap = duel ? (doneMap[duel.id] ?? {}) : {};
+
+        const vals = Array.from({ length: 7 }, (_, i) => {
+          const d = new Date(cw.weekStart + 'T00:00:00');
           d.setDate(d.getDate() + i);
           const day = d.toISOString().split('T')[0];
-          if (day > today) return null;
+          if (day > today) return null;          // future
+          if (!duel || total === 0) return null; // no duel / no habits this week
           const done = dayMap[day] ?? 0;
           if (done === 0) return 0;
           return done >= total ? 1 : 0.5;
         });
-        return { label, vals, isNow };
-      }).reverse(); // oldest first
+
+        return { label: cw.label, isNow: cw.isNow, vals };
+      });
 
       setWeeks(weekRows);
       setLoading(false);
@@ -106,7 +138,7 @@ export default function HistoryModal({ open, onClose, dark, accent, partial }) {
         borderRight: `1px solid ${dark ? 'rgba(78,94,133,0.65)' : 'rgba(62,47,36,0.18)'}`,
         paddingBottom: 'env(safe-area-inset-bottom, 16px)',
       }}>
-        {/* Handle */}
+        {/* Drag handle */}
         <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 6px' }}>
           <div style={{ width: 36, height: 4, background: dark ? 'rgba(184,174,152,0.28)' : 'rgba(62,47,36,0.18)', borderRadius: 2 }} />
         </div>
@@ -134,10 +166,6 @@ export default function HistoryModal({ open, onClose, dark, accent, partial }) {
             <div style={{ textAlign: 'center', padding: '20px 0', fontFamily: '"Silkscreen",monospace', fontSize: '9px', color: dark ? '#6B7A8E' : '#AAA090', letterSpacing: '0.1em' }}>
               LOADING...
             </div>
-          ) : weeks.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '20px 0', fontFamily: '"Silkscreen",monospace', fontSize: '9px', color: dark ? '#6B7A8E' : '#AAA090', letterSpacing: '0.08em' }}>
-              NO HISTORY YET
-            </div>
           ) : (
             <>
               {/* Day headers */}
@@ -148,11 +176,15 @@ export default function HistoryModal({ open, onClose, dark, accent, partial }) {
                 ))}
               </div>
 
-              {/* Week rows */}
+              {/* 4 week rows — always rendered */}
               {weeks.map((week, wi) => (
                 <div key={wi} style={{ display: 'grid', gridTemplateColumns: '52px repeat(7, 1fr)', gap: 4, marginBottom: 5 }}>
                   <div style={{ display: 'flex', alignItems: 'center', paddingRight: 4 }}>
-                    <span style={{ fontFamily: '"Silkscreen",monospace', fontSize: '7px', color: dark ? 'rgba(184,174,152,0.48)' : 'rgba(62,47,36,0.38)', lineHeight: 1.3, whiteSpace: 'pre' }}>
+                    <span style={{
+                      fontFamily: '"Silkscreen",monospace', fontSize: '7px',
+                      color: week.isNow ? accent : (dark ? 'rgba(184,174,152,0.48)' : 'rgba(62,47,36,0.38)'),
+                      lineHeight: 1.3, whiteSpace: 'pre',
+                    }}>
                       {week.label}
                     </span>
                   </div>
