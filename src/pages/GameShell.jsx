@@ -44,6 +44,15 @@ export default function GameShell() {
     return () => clearInterval(t);
   }, []);
 
+  // Heartbeat — update last_seen every 60 s while app is open
+  useEffect(() => {
+    if (!user) return;
+    const ping = () => supabase.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', user.id);
+    ping();
+    const t = setInterval(ping, 60_000);
+    return () => clearInterval(t);
+  }, [user]);
+
   useEffect(() => {
     if (!user) return;
 
