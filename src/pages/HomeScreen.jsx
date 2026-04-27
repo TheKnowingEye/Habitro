@@ -42,7 +42,7 @@ function calInk(val, dark) {
   return dark ? 'rgba(184,174,152,0.3)' : 'rgba(62,47,36,0.2)';
 }
 
-export default function HomeScreen({ theme, dark, accent, userAvatar, onOpenLeader, onOpenHistory }) {
+export default function HomeScreen({ theme, dark, accent, userAvatar, onOpenLeader, onOpenHistory, onStreakChange }) {
   const { user } = useAuth();
   const partial   = theme.partial;
 
@@ -94,7 +94,7 @@ export default function HomeScreen({ theme, dark, accent, userAvatar, onOpenLead
         { data: weekCheckins },
         { data: leagueRow },
       ] = await Promise.all([
-        supabase.from('scores').select('user_id, hp, total_points').eq('duel_id', duelData.id),
+        supabase.from('scores').select('user_id, hp, total_points, consecutive_days').eq('duel_id', duelData.id),
         oppId
           ? supabase.from('profiles').select('username, avatar_kind').eq('id', oppId).single()
           : Promise.resolve({ data: null }),
@@ -133,23 +133,19 @@ export default function HomeScreen({ theme, dark, accent, userAvatar, onOpenLead
       setTodayDone(todayMyDone);
       setOppTodayDone(todayOppDone);
 
-      // Week calendar values
+      // Week calendar values — today shows pending (null) if no check-ins yet
       const vals = days.map(day => {
         if (day > today) return null;
         const done = checkins.filter(c => c.user_id === user.id && c.checked_date === day && c.completed).length;
-        if (done === 0) return 0;
+        if (done === 0) return day === today ? null : 0;
         return done >= myTotal ? 1 : 0.5;
       });
       setWeekVals(vals);
 
-      // Streak — consecutive full days ending at yesterday
-      let s = 0;
-      for (let i = days.length - 1; i >= 0; i--) {
-        if (days[i] >= today) continue;
-        if (vals[i] === 1) s++;
-        else break;
-      }
-      setStreak(s);
+      // Streak from DB (consecutive_days on scores row — persists across weeks)
+      const myStreak = scores?.find(s => s.user_id === user.id)?.consecutive_days ?? 0;
+      setStreak(myStreak);
+      onStreakChange?.(myStreak);
       setLoading(false);
 
       // Animate HP bars in
