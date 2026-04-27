@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { HABITRO_THEMES, getThemeForHour } from '../lib/themes';
+import { toLocalDateStr } from '../lib/dates';
 import StatBadge from '../components/ui/StatBadge';
 import NotifDrawer from '../components/ui/NotifDrawer';
 import HistoryModal from '../components/ui/HistoryModal';
@@ -58,7 +59,7 @@ export default function GameShell() {
       const daysFromMon = (today.getDay() + 6) % 7;
       const monday = new Date(today);
       monday.setDate(today.getDate() - daysFromMon);
-      const mondayStr = monday.toISOString().split('T')[0];
+      const mondayStr = toLocalDateStr(monday);
 
       const { data: duel } = await supabase
         .from('duels')

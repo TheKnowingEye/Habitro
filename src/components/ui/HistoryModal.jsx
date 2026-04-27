@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { darken } from '../../lib/darken';
+import { toLocalDateStr } from '../../lib/dates';
 
 const DAY_LABELS   = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const HISTORY_WEEKS = 4;
@@ -21,8 +22,8 @@ function getCalendarWeeks(n) {
     const end = new Date(start);
     end.setDate(start.getDate() + 6);
     weeks.push({
-      weekStart: start.toISOString().split('T')[0],
-      weekEnd:   end.toISOString().split('T')[0],
+      weekStart: toLocalDateStr(start),
+      weekEnd:   toLocalDateStr(end),
       isNow:     i === 0,
       label:     i === 0 ? 'WK 4\n(NOW)' : `WK ${n - i}`,
     });
@@ -53,7 +54,7 @@ export default function HistoryModal({ open, onClose, dark, accent, partial }) {
         .order('week_start', { ascending: false })
         .limit(HISTORY_WEEKS);
 
-      const today    = new Date().toISOString().split('T')[0];
+      const today    = toLocalDateStr();
       const duelIds  = (duels ?? []).map(d => d.id);
       let doneMap      = {};
       let habitsByDuel = {};
@@ -82,7 +83,7 @@ export default function HistoryModal({ open, onClose, dark, accent, partial }) {
         const vals = Array.from({ length: 7 }, (_, i) => {
           const d = new Date(cw.weekStart + 'T00:00:00');
           d.setDate(d.getDate() + i);
-          const day = d.toISOString().split('T')[0];
+          const day = toLocalDateStr(d);
           if (day > today) return null;          // future
           if (!duel || total === 0) return null; // no duel / no habits this week
           const done = dayMap[day] ?? 0;

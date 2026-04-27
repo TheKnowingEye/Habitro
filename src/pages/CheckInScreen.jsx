@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import PixelCard from '../components/ui/PixelCard';
 import ProofModal from '../components/ui/ProofModal';
 import { darken } from '../lib/darken';
+import { toLocalDateStr } from '../lib/dates';
 
 function xpForHabit(targetFreq) {
   return (targetFreq || 1) * 3;
@@ -158,7 +159,7 @@ export default function CheckInScreen({ theme, dark, accent }) {
   const [uploading,      setUploading]      = useState(false);
 
   const savingRef = useRef(new Set());
-  const today     = new Date().toISOString().split('T')[0];
+  const today     = toLocalDateStr();
 
   useEffect(() => {
     if (!user) return;
@@ -181,10 +182,11 @@ export default function CheckInScreen({ theme, dark, accent }) {
 
       if (!duelHabitData?.length) { setPageState('no-habits'); return; }
 
-      // Monday of this week
-      const weekStart = new Date(today + 'T00:00:00');
-      weekStart.setUTCDate(weekStart.getUTCDate() - ((weekStart.getUTCDay() + 6) % 7));
-      const weekStartStr = weekStart.toISOString().split('T')[0];
+      // Monday of this week (local time)
+      const _now = new Date();
+      const _wd  = new Date(_now);
+      _wd.setDate(_now.getDate() - ((_now.getDay() + 6) % 7));
+      const weekStartStr = toLocalDateStr(_wd);
 
       const [{ data: weekCheckins }, { data: todayCheckins }] = await Promise.all([
         supabase.from('check_ins')

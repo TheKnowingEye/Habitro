@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { AvatarMini } from './Avatar';
+import { toLocalDateStr } from '../../lib/dates';
 
 const TIER_CONFIG = {
   bronze:   { label: 'BRONZE',   icon: '🥉', color: '#CD7F32', bg: 'rgba(205,127,50,0.13)' },
@@ -25,7 +26,7 @@ export default function LeaderboardModal({ open, onClose, dark, accent }) {
     setPageState('loading');
 
     async function load() {
-      const today = new Date().toISOString().split('T')[0];
+      const today = toLocalDateStr();
 
       const { data: memberships } = await supabase
         .from('league_members')
