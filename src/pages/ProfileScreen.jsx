@@ -149,7 +149,7 @@ function HistoryGrid({ weeks, dark, accent, partial }) {
   );
 }
 
-export default function ProfileScreen({ theme, dark, accent }) {
+export default function ProfileScreen({ theme, dark, accent, onAvatarChange }) {
   const { user } = useAuth();
   const navigate  = useNavigate();
 
@@ -258,6 +258,7 @@ export default function ProfileScreen({ theme, dark, accent }) {
 
   async function handleAvatarChange(kind) {
     setProfile(prev => prev ? { ...prev, avatar_kind: kind } : prev);
+    onAvatarChange?.(kind);
     await supabase.from('profiles').update({ avatar_kind: kind }).eq('id', user.id);
   }
 
