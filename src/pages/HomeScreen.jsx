@@ -7,10 +7,11 @@ import PixelCard from '../components/ui/PixelCard';
 import CornerFrame from '../components/ui/CornerFrame';
 import { Avatar } from '../components/ui/Avatar';
 import { darken } from '../lib/darken';
+import { toLocalDateStr } from '../lib/dates';
 
 const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
-function toDateStr(d) { return d.toISOString().split('T')[0]; }
+function toDateStr(d) { return toLocalDateStr(d); }
 
 function getWeekDays(weekStart) {
   const days = [];

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { darken } from '../../lib/darken';
+import { toLocalDateStr } from '../../lib/dates';
 
 const CATEGORY_ICON = {
   fitness:    '🏋️',
@@ -38,7 +39,7 @@ export default function HabitSetupModal({ duel, dark, accent, onDone }) {
       // Carry forward from last week
       const lastMon = new Date(duel.week_start + 'T00:00:00');
       lastMon.setDate(lastMon.getDate() - 7);
-      const lastMonStr = lastMon.toISOString().split('T')[0];
+      const lastMonStr = toLocalDateStr(lastMon);
 
       const { data: lastDuel } = await supabase
         .from('duels')
