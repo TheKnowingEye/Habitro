@@ -114,10 +114,11 @@ export default function GameShell() {
     const opening = !notifOpen;
     setNotifOpen(opening);
     if (opening && user && unreadCount > 0) {
-      setNotifs(prev => prev.map(n => ({ ...n, read_at: n.read_at || new Date().toISOString() })));
+      const now = new Date().toISOString();
+      setNotifs(prev => prev.map(n => ({ ...n, read: true, read_at: n.read_at || now })));
       await supabase
         .from('notifications')
-        .update({ read_at: new Date().toISOString() })
+        .update({ read: true, read_at: now })
         .eq('user_id', user.id)
         .is('read_at', null);
     }
@@ -191,7 +192,10 @@ export default function GameShell() {
           <FeedScreen theme={theme} dark={dark} accent={accent} />
         )}
         {tab === 'profile' && (
-          <ProfileScreen theme={theme} dark={dark} accent={accent} />
+          <ProfileScreen
+            theme={theme} dark={dark} accent={accent}
+            onAvatarChange={kind => setProfile(p => p ? { ...p, avatar_kind: kind } : p)}
+          />
         )}
       </div>
 
