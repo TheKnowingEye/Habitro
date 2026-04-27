@@ -11,6 +11,17 @@ import { toLocalDateStr } from '../lib/dates';
 
 const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
+function formatLastSeen(lastSeen) {
+  if (!lastSeen) return null;
+  const diffMs  = Date.now() - new Date(lastSeen).getTime();
+  const diffMin = Math.floor(diffMs / 60_000);
+  if (diffMin < 3)  return { online: true,  label: 'ONLINE' };
+  if (diffMin < 60) return { online: false, label: `${diffMin}M AGO` };
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24)  return { online: false, label: `${diffHr}H AGO` };
+  return { online: false, label: `${Math.floor(diffHr / 24)}D AGO` };
+}
+
 function toDateStr(d) { return toLocalDateStr(d); }
 
 function getWeekDays(weekStart) {
@@ -96,7 +107,7 @@ export default function HomeScreen({ theme, dark, accent, userAvatar, onOpenLead
       ] = await Promise.all([
         supabase.from('scores').select('user_id, hp, total_points, consecutive_days').eq('duel_id', duelData.id),
         oppId
-          ? supabase.from('profiles').select('username, avatar_kind').eq('id', oppId).single()
+          ? supabase.from('profiles').select('username, avatar_kind, last_seen').eq('id', oppId).single()
           : Promise.resolve({ data: null }),
         supabase.from('duel_habits').select('id').eq('duel_id', duelData.id).eq('user_id', user.id),
         oppId
@@ -322,15 +333,32 @@ export default function HomeScreen({ theme, dark, accent, userAvatar, onOpenLead
                 Checked in {oppTodayDone}/{oppHabitCount} habits today.
               </div>
             </div>
-            <div style={{
-              padding: '4px 8px',
-              background: `${accent}22`, border: `1px solid ${accent}55`,
-              borderRadius: 4,
-              fontFamily: '"Silkscreen",monospace', fontSize: '8px',
-              color: accent, textTransform: 'uppercase', letterSpacing: '0.08em',
-            }}>
-              {duel.is_practice ? 'BOT' : 'ACTIVE'}
-            </div>
+            {(() => {
+              const seen = duel.is_practice ? null : formatLastSeen(oppProfile?.last_seen);
+              return (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  padding: '4px 8px',
+                  background: seen?.online ? 'rgba(74,210,149,0.15)' : `${accent}22`,
+                  border: `1px solid ${seen?.online ? 'rgba(74,210,149,0.5)' : accent + '55'}`,
+                  borderRadius: 4,
+                  flexShrink: 0,
+                }}>
+                  <span style={{
+                    width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+                    background: seen?.online ? '#4AD295' : (dark ? 'rgba(184,174,152,0.4)' : 'rgba(62,47,36,0.3)'),
+                    boxShadow: seen?.online ? '0 0 6px #4AD295' : 'none',
+                  }} />
+                  <span style={{
+                    fontFamily: '"Silkscreen",monospace', fontSize: '8px',
+                    color: seen?.online ? '#4AD295' : (dark ? '#B8AE98' : '#7A6555'),
+                    letterSpacing: '0.08em',
+                  }}>
+                    {duel.is_practice ? 'BOT' : (seen ? seen.label : 'OFFLINE')}
+                  </span>
+                </div>
+              );
+            })()}
           </div>
         </PixelCard>
 
