@@ -103,7 +103,7 @@ export default function HomeScreen({ theme, dark, accent, userAvatar, onOpenLead
         { data: myHabits },
         { data: oppHabits },
         { data: weekCheckins },
-        { data: leagueRow },
+        { data: leagueRows },
       ] = await Promise.all([
         supabase.from('scores').select('user_id, hp, total_points, consecutive_days').eq('duel_id', duelData.id),
         oppId
@@ -118,7 +118,7 @@ export default function HomeScreen({ theme, dark, accent, userAvatar, onOpenLead
           .eq('duel_id', duelData.id)
           .gte('checked_date', duelData.week_start)
           .lte('checked_date', today),
-        supabase.from('league_members').select('position').eq('user_id', user.id).maybeSingle(),
+        supabase.from('league_members').select('league_id, weekly_xp, leagues(week_start, week_end)').eq('user_id', user.id),
       ]);
 
       if (cancelled) return;
@@ -134,7 +134,21 @@ export default function HomeScreen({ theme, dark, accent, userAvatar, onOpenLead
       const oppTotal = oppHabits?.length ?? 0;
       setMyHabitCount(myTotal);
       setOppHabitCount(oppTotal);
-      setRankPos(leagueRow?.position ?? null);
+
+      // Live rank: count league members with higher weekly_xp in the active league
+      const myMembership = (leagueRows ?? []).find(m =>
+        m.leagues?.week_start <= today && m.leagues?.week_end >= today
+      );
+      if (myMembership) {
+        const { count } = await supabase
+          .from('league_members')
+          .select('id', { count: 'exact', head: true })
+          .eq('league_id', myMembership.league_id)
+          .gt('weekly_xp', myMembership.weekly_xp);
+        setRankPos((count ?? 0) + 1);
+      } else {
+        setRankPos(null);
+      }
 
       const checkins    = weekCheckins ?? [];
       const todayMyDone = checkins.filter(c => c.user_id === user.id && c.checked_date === today && c.completed).length;
